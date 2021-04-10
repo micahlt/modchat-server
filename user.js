@@ -1,19 +1,21 @@
+const ScratchLib = require("scratchlib");
 const users = [];
 
 // Join user to chat
 function userJoin(id, username, room) {
-  const user = {
-    id,
-    username,
-    room
-  };
-
-  users.push(user);
-  console.log(users, "users");
-
+  let user = {};
+  ScratchLib.getProfile(username).then((data) => {
+    user = {
+      id,
+      username,
+      room,
+      pic: data.profile.images['60x60']
+    };
+    users.push(user);
+    console.log("user out", users);
+  })
   return user;
 }
-console.log("user out", users);
 
 // Get current user
 function getCurrentUser(id) {
@@ -27,10 +29,11 @@ function userLeave(id) {
   if (index !== -1) {
     return users.splice(index, 1)[0];
   }
+  console.log(users);
 }
 
 module.exports = {
   userJoin,
   getCurrentUser,
-  userLeave,
+  userLeave
 };
