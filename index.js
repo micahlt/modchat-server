@@ -1,5 +1,11 @@
 const express = require("express");
+const bodyParser = require('body-parser');
+const cors = require('cors');
 const app = express();
+const fetch = require('node-fetch');
+app.use(bodyParser.json());
+app.use(cors());
+let base64 = require('base-64');
 const socket = require("socket.io");
 const color = require("colors");
 const cryptoRandomString = require("crypto-random-string");
@@ -18,6 +24,27 @@ var server = app.listen(
     .yellow.bold
   )
 );
+
+app.post('/api/soa2code', (req, res) => {
+  if (req.body.code && req.body.state) {
+    console.log('Contains body and state'.green);
+    fetch("https://oauth2.scratch-wiki.info/w/rest.php/soa2/v0/tokens", {
+      method: "POST",
+      body: JSON.stringify({
+        "client_id": parseInt(process.env.MC_CLIENT_ID, 10),
+        "client_secret": process.env.MC_CLIENT_SECRET,
+        "code": req.body.code,
+        "scopes": "identify"
+      })
+    }).then((response) => {
+      return response.json()
+    }).then((json) => {
+    })
+  } else {
+    console.log('Missing code, state, or both'.red);
+    res.send(400);
+  }
+})
 
 const io = socket(server, {
   cors: {
