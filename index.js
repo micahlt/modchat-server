@@ -7,7 +7,28 @@ app.use(bodyParser.json());
 app.use(cors());
 let base64 = require('base-64');
 const socket = require("socket.io");
+const io = socket(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+require('socketio-auth')(io, {
+  authenticate: function (socket, data, callback) {
+    console.log('attempting auth')
+    //get credentials sent by the client
+    var username = data.username;
+    var password = data.password;
+    console.log(username, password);
+    db.findOne({username: username}, function(err, user) {
+      //inform the callback of auth success/failure
+      if (err || !user) return callback(new Error("User not found"));
+      return callback(null, user.token == password);
+    });
+  }
+});
 const color = require("colors");
+let db = require('./db');
 const cryptoRandomString = require("crypto-random-string");
 const {
   getCurrentUser,
@@ -27,7 +48,7 @@ var server = app.listen(
 
 app.post('/api/soa2code', (req, res) => {
   if (req.body.code && req.body.state) {
-    console.log('Contains body and state'.green);
+    console.log('Passed checks'.green + ': ' + JSON.stringify(req.body));
     fetch("https://oauth2.scratch-wiki.info/w/rest.php/soa2/v0/tokens", {
       method: "POST",
       body: JSON.stringify({
@@ -39,6 +60,48 @@ app.post('/api/soa2code', (req, res) => {
     }).then((response) => {
       return response.json()
     }).then((json) => {
+      console.log(`1st request JSON: `, json)
+      if (!json) {
+        res.sendStatus(400);
+      } else {
+        fetch("https://oauth2.scratch-wiki.info/w/rest.php/soa2/v0/user", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${base64.encode(json.access_token)}`
+          }
+        }).then((newRes) => {
+          return newRes.json();
+        }).then((newResJson) => {
+          console.log('Got access code', newResJson)
+          if (newResJson.user_id) {
+            newResJson.session = cryptoRandomString(46);
+            console.log('Adding user to DB');
+            db.findOne({username: newResJson.user_name}, (err, doc) => {
+              if (doc) {
+                db.update({username: newResJson.user_name}, {
+                  username: newResJson.user_name,
+                  token: newResJson.session
+                })
+              } else {
+                db.insert({
+                  username: newResJson.user_name,
+                  token: newResJson.session,
+                  status: 'offline'
+                })
+              }
+            })
+            res.json(newResJson);
+            return;
+          } else {
+            try {
+              res.sendStatus(400);
+            } catch (err) {
+              console.log(err)
+            }
+            return;
+          }
+        })
+      }
     })
   } else {
     console.log('Missing code, state, or both'.red);
@@ -46,26 +109,23 @@ app.post('/api/soa2code', (req, res) => {
   }
 })
 
-const io = socket(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
-
 //everything related to io will go here
 io.on("connection", (socket) => {
+  socket.on('authenticate', () => {
+    console.log('HEY WE AUTHED');
+  })
   //when new user join room
   socket.on("joinRoom", ({
     username,
-    roomname
+    roomname,
+    token
   }) => {
     //* create user
     if (username == "Unauthed User") {
       console.log(`An ${'unauthenicated user'.bgRed} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`)
       return 1;
     }
-    const user = userJoin(socket.id, username, roomname);
+    const user = userJoin(socket.id, username, roomname, token);
     socket.join(roomname);
     console.log(`${username.bgBlue} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`);
     //* Broadcast message to everyone except user that he has joined
@@ -85,6 +145,10 @@ io.on("connection", (socket) => {
     if (!getCurrentUser(socket.id)) {
       console.log('WARNING:'.bgRed + ' unauthenicated user attempting to send messages!'.red)
       return 1;
+    }
+    if (getCurrentUser(socket.id).token != object.token) {
+      return 1;
+      console.log('WARNING:'.bgRed + ' unauthenicated user attempting to masquerade as someone else!'.red)
     }
     const user = getCurrentUser(socket.id);
     console.log(`${user.username.bgBlue} says ${object.content.bgBlue} in the ${user.room.bgBlue} room`);
