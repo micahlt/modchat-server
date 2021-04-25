@@ -13,20 +13,6 @@ const io = socket(server, {
     methods: ["GET", "POST"]
   }
 });
-require('socketio-auth')(io, {
-  authenticate: function (socket, data, callback) {
-    console.log('attempting auth')
-    //get credentials sent by the client
-    var username = data.username;
-    var password = data.password;
-    console.log(username, password);
-    db.findOne({username: username}, function(err, user) {
-      //inform the callback of auth success/failure
-      if (err || !user) return callback(new Error("User not found"));
-      return callback(null, user.token == password);
-    });
-  }
-});
 const color = require("colors");
 let db = require('./db');
 const cryptoRandomString = require("crypto-random-string");
@@ -76,12 +62,17 @@ app.post('/api/soa2code', (req, res) => {
           if (newResJson.user_id) {
             newResJson.session = cryptoRandomString(46);
             console.log('Adding user to DB');
-            db.findOne({username: newResJson.user_name}, (err, doc) => {
+            db.findOne({
+              username: newResJson.user_name
+            }, (err, doc) => {
               if (doc) {
-                db.update({username: newResJson.user_name}, {
+                db.update({
+                  username: newResJson.user_name
+                }, {
                   username: newResJson.user_name,
                   token: newResJson.session
                 })
+                console.log(newResJson.session)
               } else {
                 db.insert({
                   username: newResJson.user_name,
@@ -105,12 +96,44 @@ app.post('/api/soa2code', (req, res) => {
     })
   } else {
     console.log('Missing code, state, or both'.red);
-    res.send(400);
+    res.sendStatus(400);
   }
 })
 
-//everything related to io will go here
+app.post('/api/updatepassword', (req, res) => {
+  if (req.body.token && req.body.password) {
+    console.log('Passed checks'.green + ': ' + JSON.stringify(req.body));
+    db.findOne({
+      token: req.body.token
+    }, (err, doc) => {
+      if ((!doc) || err) {
+        console.log(`Couldn't find a valid user`.red);
+        res.sendStatus(400);
+      } else {
+        db.update({
+          token: req.body.token
+        }, {
+          $set: {
+            password: req.body.password
+          }
+        }, {}, (err) => {
+          if (err) {
+            console.log(`Error updating document`.red);
+            res.sendStatus(500);
+          }
+        })
+      }
+    })
+  } else {
+    console.log('Missing token, password, or both'.red);
+    console.log(req.body)
+    res.sendStatus(400);
+  }
+})
+
+//everything related to socketio will go here
 io.on("connection", (socket) => {
+  console.log('new connection')
   socket.on('authenticate', () => {
     console.log('HEY WE AUTHED');
   })
@@ -121,10 +144,11 @@ io.on("connection", (socket) => {
     token
   }) => {
     //* create user
+    /*
     if (username == "Unauthed User") {
       console.log(`An ${'unauthenicated user'.bgRed} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`)
       return 1;
-    }
+    } */
     const user = userJoin(socket.id, username, roomname, token);
     socket.join(roomname);
     console.log(`${username.bgBlue} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`);
