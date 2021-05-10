@@ -217,16 +217,25 @@ io.on("connection", (socket) => {
       token: object.token
     }, (err, docs) => {
       user = docs[0];
-      // get user room and emit message
-      console.log(`${user.username.bgBlue} says ${object.content.bgBlue} in the ${user.room.bgBlue} room`);
-      io.to(user.room).emit("message", {
-        username: user.username,
-        profilePicture: user.pic,
-        type: "text",
-        content: object.content,
-        id: cryptoRandomString(34)
+      const content = object.content;
+      // moderate message with external server
+      fetch('https://mc-filterbot.micahlt.repl.co/api/checkstring', {
+        method: 'POST',
+        body: content
+      }).then((res) => {
+        if (res.status == 200) {
+          // get user room and emit message
+          // console.log(`${user.username.bgBlue} says ${object.content.bgBlue} in the ${user.room.bgBlue} room`);
+          io.to(user.room).emit("message", {
+            username: user.username,
+            profilePicture: user.pic,
+            type: "text",
+            content: object.content,
+            id: cryptoRandomString(34)
+          });
+        }
       });
-    })
+    });
   });
 
   // Disconnect , when user leave room
