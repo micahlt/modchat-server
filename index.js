@@ -63,7 +63,7 @@ app.post("/api/soa2code", (req, res) => {
     }).then((response) => {
       return response.json()
     }).then((json) => {
-      console.log(`1st request JSON: `, json)
+      console.log(`1st request JSON: `, json);
       if (!json) {
         res.sendStatus(400);
       } else {
@@ -89,7 +89,6 @@ app.post("/api/soa2code", (req, res) => {
                   username: newResJson.user_name,
                   token: newResJson.session
                 })
-                console.log(newResJson.session)
               } else {
                 db.insert({
                   username: newResJson.user_name,
@@ -119,7 +118,7 @@ app.post("/api/soa2code", (req, res) => {
 
 app.post("/api/updatepassword", (req, res) => {
   if (req.body.token && req.body.password) {
-    console.log("Passed checks".green + ": " + JSON.stringify(req.body));
+    console.log("Passed checks".green);
     db.findOne({
       token: req.body.token
     }, (err, doc) => {
@@ -152,7 +151,7 @@ app.post("/api/updatepassword", (req, res) => {
 
 app.post("/api/login", (req, res) => {
   if (req.body.username && req.body.password) {
-    console.log("Passed checks".green + ": " + JSON.stringify(req.body));
+    console.log("Passed checks".green);
     db.findOne({
       username: req.body.username.toLowerCase(),
       password: req.body.password
@@ -217,6 +216,7 @@ io.on("connection", (socket) => {
       token: object.token
     }, (err, docs) => {
       user = docs[0];
+      console.log("User:\n", user)
       const content = object.content;
       // moderate message with external server
       fetch('https://mc-filterbot.micahlt.repl.co/api/checkstring', {
