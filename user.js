@@ -18,7 +18,8 @@ function userJoin(socket, username, room) {
     db.findOne({
       socket: socket
     }, (err, doc) => {
-      console.log(doc)
+      doc.password = '[REDACTED]'
+      // console.log(doc)
       toReturn = doc;
     });
     return toReturn;

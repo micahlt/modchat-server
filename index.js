@@ -51,7 +51,7 @@ const {
 
 app.post("/api/soa2code", (req, res) => {
   if (req.body.code && req.body.state) {
-    console.log("Passed checks".green + ": " + JSON.stringify(req.body));
+    console.log("Passed checks".green);
     fetch("https://oauth2.scratch-wiki.info/w/rest.php/soa2/v0/tokens", {
       method: "POST",
       body: JSON.stringify({
@@ -63,7 +63,6 @@ app.post("/api/soa2code", (req, res) => {
     }).then((response) => {
       return response.json()
     }).then((json) => {
-      console.log(`1st request JSON: `, json);
       if (!json) {
         res.sendStatus(400);
       } else {
@@ -75,7 +74,6 @@ app.post("/api/soa2code", (req, res) => {
         }).then((newRes) => {
           return newRes.json();
         }).then((newResJson) => {
-          console.log("Got access code", newResJson)
           if (newResJson.user_id) {
             newResJson.session = cryptoRandomString(46);
             console.log("Adding user to DB");
@@ -144,7 +142,6 @@ app.post("/api/updatepassword", (req, res) => {
     })
   } else {
     console.log("Missing token, password, or both".red);
-    console.log(req.body)
     res.sendStatus(400);
   }
 })
@@ -161,7 +158,7 @@ app.post("/api/login", (req, res) => {
         res.sendStatus(400);
       } else {
         console.log(`Correct username and password`.green)
-        res.sendStatus(200);
+        res.send(doc.token);
       }
     })
   } else {
@@ -184,7 +181,7 @@ io.on("connection", (socket) => {
       console.log(`An ${"unauthenicated user".bgRed} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`)
       return 1;
     } */
-    console.log('joining user'.blue)
+    console.log('Joining user to chat'.blue)
     let user = userJoin(socket.id, username, roomname, token);
     socket.join(roomname);
     console.log(`${username.bgBlue} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`);
@@ -210,13 +207,11 @@ io.on("connection", (socket) => {
 
   //when somebody send text
   socket.on("chat", (object) => {
-    console.log(object);
     let user;
     db.find({
       token: object.token
     }, (err, docs) => {
       user = docs[0];
-      console.log("User:\n", user)
       const content = object.content;
       // moderate message with external server
       fetch('https://mc-filterbot.micahlt.repl.co/api/checkstring', {
