@@ -173,7 +173,7 @@ io.on("connection", (socket) => {
   socket.on("joinRoom", ({
     username,
     roomname,
-    token
+    token,
   }) => {
     //* create user
     /*
@@ -205,7 +205,11 @@ io.on("connection", (socket) => {
     })
   });
 
-  //when somebody send text
+  socket.on("leaveRoom", (room) => {
+    socket.leave(room);
+  });
+
+  //when somebody sends text
   socket.on("chat", (object) => {
     let user;
     db.find({
