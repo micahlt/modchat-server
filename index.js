@@ -207,6 +207,14 @@ io.on("connection", (socket) => {
 
   //when somebody send text
   socket.on("chat", (object) => {
+    if(!object || object == null || !("token" in object && "content" in object)) {
+      if (!getCurrentUser(socket.id)) {
+        console.log(`An ${"unauthenicated user".bgYellow} attempted to DoS the server on listener "chat".`.red);
+        return;
+      }
+      console.log(`${getCurrentUser(socket.id).username.bgBlue} attempted to DoS the server on listener "chat".`.red);
+      return;
+    }
     let user;
     db.find({
       token: object.token
