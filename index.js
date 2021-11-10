@@ -189,7 +189,7 @@ io.on("connection", (socket) => {
     io.to(roomname).emit("message", {
       userId: "000000",
       username: "Modchat Bot",
-      profilePicture: "https://pics.freeicons.io/uploads/icons/png/13314222861581065997-512.png",
+      profilePicture: "https://cdn.micahlindley.com/assets/modchat-pfp.png",
       type: "text",
       content: `🎉 @${username} has joined the chat 🎉`,
       id: cryptoRandomString(34)
