@@ -150,7 +150,7 @@ app.post("/api/login", (req, res) => {
   if (req.body.username && req.body.password) {
     console.log("Passed checks".green);
     db.findOne({
-      username: req.body.username.toLowerCase(),
+      username: req.body.username,
       password: req.body.password
     }, (err, doc) => {
       if ((!doc) || err) {
