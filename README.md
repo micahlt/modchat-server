@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://github.com/micahlt/modchat-vue/blob/master/src/assets/logo.png?raw=true" width="150px" height="auto">
+<img src="https://github.com/micahlt/modchat-vue/raw/master/src/assets/modchat-pfp.png" width="150px" height="auto">
 
 # modchat-server
 
@@ -23,3 +23,13 @@ $ npm install
 $ npm start
 ```
 </div>
+
+## Development
+### Check for code formatting
+```bash
+$ npm run check
+```
+### Beautify code if required
+```bash
+$ npm run format
+```
