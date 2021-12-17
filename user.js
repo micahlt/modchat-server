@@ -1,6 +1,6 @@
-const ScratchLib = require("scratchlib");
-const User = require("./models/user.js");
-let userList = [];
+const ScratchLib = require("scratchlib")
+const User = require("./models/user.js")
+const userList = []
 
 // Join user to chat
 function userJoin(socket, username, room) {
@@ -20,8 +20,9 @@ function userJoin(socket, username, room) {
     ).then(() => {
       userList.push({
         room: room,
-        name: username
-      });
+        name: username,
+        scratch_picture: data.profile.images["60x60"],
+      })
       User.findOne(
         {
           username: username,
@@ -38,25 +39,30 @@ function userJoin(socket, username, room) {
 async function getCurrentUser(socket_id) {
   const user = await User.findOne({
     socket_id: socket_id,
-  }).lean();
-  return user;
+  }).lean()
+  return user
 }
 
 // User leaves chat
-async function userLeave(socket) {
-  const user = await User.findOneAndUpdate({
+async function userLeave(socket, username, room) {
+  const user = await User.findOneAndUpdate(
+    {
       socket_id: socket,
     },
     {
-      status: "offline"
-    }).lean();
-  console.log("User is leaving.");
-  return;
+      status: "offline",
+    }
+  )
+    .lean()
+    .then(() => {
+      userList.splice(userList.indexOf(username) + 1, 1)
+    })
+  return
 }
 
 module.exports = {
   userJoin,
   getCurrentUser,
   userLeave,
-  userList
+  userList,
 }

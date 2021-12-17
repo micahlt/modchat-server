@@ -1,36 +1,37 @@
-const VERSION = "0.5.1";
-const express = require("express");
-const bodyParser = require("body-parser");
-const cors = require("cors");
+const VERSION = "0.5.1"
+const express = require("express")
+const bodyParser = require("body-parser")
+const cors = require("cors")
 
-const app = express();
-const fetch = require("node-fetch");
-const port = process.env.PORT || 8000;
+const app = express()
+const fetch = require("node-fetch")
+const port = process.env.PORT || 8000
 
-app.use(bodyParser.json());
-app.use(cors());
+app.use(bodyParser.json())
+app.use(cors())
 
-const mongoose = require("mongoose");
-mongoose.connect(process.env.MONGO_URL);
+const mongoose = require("mongoose")
+mongoose.connect(process.env.MONGO_URL)
 
 // Schemas
-const User = require("./models/user.js");
-const Message = require("./models/message.js");
+const User = require("./models/user.js")
+const Message = require("./models/message.js")
+const Room = require("./models/room.js")
 
-const base64 = require("base-64");
-const socket = require("socket.io");
-const bcrypt = require("bcryptjs");
+const base64 = require("base-64")
+const socket = require("socket.io")
+const bcrypt = require("bcryptjs")
 
 var server = app.listen(
   port,
   console.log(`Server is running on port ${process.env.PORT || 3000}.`)
-);
+)
 const io = socket(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
   },
-});
+})
 
 require("socketio-auth")(io, {
   authenticate: async (socket, data, callback) => {
@@ -49,12 +50,17 @@ require("socketio-auth")(io, {
         }
         return callback(null, bcrypt.compare(password, user.password))
       }
-    );
+    )
   },
-});
+})
 
 const cryptoRandomString = require("crypto-random-string")
 const { getCurrentUser, userLeave, userJoin, userList } = require("./user.js")
+
+Room.create({
+  messages: [],
+  name: "default",
+}) // creates mongo object for default room
 
 app.get("/", (req, res) => {
   res.send("modchat-server is running")
@@ -117,8 +123,8 @@ app.post("/api/soa2code", (req, res) => {
 
 app.post("/api/updatepassword", async (req, res) => {
   if (req.body.token && req.body.password) {
-    let newPwd = await bcrypt.hash(req.body.password, 10)
-    let token = req.body.token
+    const newPwd = await bcrypt.hash(req.body.password, 10)
+    const token = req.body.token
     await User.updateOne(
       {
         token,
@@ -171,7 +177,7 @@ io.on("connection", (socket) => {
     } */
     console.log("Joining user to chat")
 
-    let user = userJoin(socket.id, username, roomname, token)
+    const user = userJoin(socket.id, username, roomname, token)
     socket.join(roomname)
     console.log(
       `${username} connected on socket ${socket.id} in room ${roomname}`
@@ -199,10 +205,10 @@ io.on("connection", (socket) => {
     })
   })
 
-  app.get('/api/onlineusers', (req, res) => {
+  app.get("/api/onlineusers", (req, res) => {
     res.send({
-      online: userList
-    });
+      online: userList,
+    })
   })
 
   socket.on("leaveRoom", (room) => {
@@ -210,12 +216,11 @@ io.on("connection", (socket) => {
   })
 
   socket.on("userTyping", (object) => {
-    io.to(object.room).emit("isTyping", object);
+    io.to(object.room).emit("isTyping", object)
   })
 
   //when somebody sends text
   socket.on("chat", (object) => {
-    console.log
     if (!object || object == null) {
       console.log(`Someone has attempted to DoS the server on listener 'chat'.`)
       return
@@ -234,15 +239,34 @@ io.on("connection", (socket) => {
           body: content,
         }).then((res) => {
           if (res.status == 200 && object.content) {
-            // get user room and emit message
-            // console.log(`${user.username.bgBlue} says ${object.content.bgBlue} in the ${user.room.bgBlue} room`);
+            const id = cryptoRandomString(34)
+
             io.to(user.room).emit("message", {
               username: user.username,
               profilePicture: user.scratch_picture,
               type: "text",
               content: object.content,
-              id: cryptoRandomString(34),
+              id: id,
             })
+            /*
+            Message.create({
+              username: user.username,
+              message: object.content,
+              profile_picture: user.scratch_picture,
+              time: 50,
+              message_id: id,
+            })
+            Room.updateOne(
+              {
+                name: user.room,
+              },
+              {
+                $push: {
+                  messages: { message_id: id },
+                },
+              }
+            )
+            */
           }
         })
       }
@@ -252,7 +276,7 @@ io.on("connection", (socket) => {
   // Disconnect , when user leave room
   socket.on("disconnect", async () => {
     const user = await getCurrentUser(socket.id)
-    // * delete user from users & emit that user has left the chat
+    // * deconste user from users & emit that user has left the chat
     if (!user) {
       console.log(`An unauthenicated user disconnected`)
       return 1
@@ -267,6 +291,6 @@ io.on("connection", (socket) => {
         id: cryptoRandomString(34),
       })
     }
-    userLeave(socket.id)
+    userLeave(socket.id, user.username, user.room)
   })
 })
