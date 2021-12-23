@@ -5,8 +5,7 @@ const cors = require("cors")
 
 const app = express()
 const fetch = require("node-fetch")
-const port = process.env.PORT || 8000
-fil
+const port = process.env.PORT || 8000;
 app.use(bodyParser.json())
 app.use(cors())
 
