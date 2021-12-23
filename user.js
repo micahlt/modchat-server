@@ -18,11 +18,13 @@ function userJoin(socket, username, room) {
         },
       }
     ).then(() => {
+      if(!userList.includes(username)) {
       userList.push({
         room: room,
         name: username,
         scratch_picture: data.profile.images["60x60"],
-      })
+        })
+      }
       User.findOne(
         {
           username: username,
@@ -44,20 +46,8 @@ async function getCurrentUser(socket_id) {
 }
 
 // User leaves chat
-async function userLeave(socket, username, room) {
-  const user = await User.findOneAndUpdate(
-    {
-      socket_id: socket,
-    },
-    {
-      status: "offline",
-    }
-  )
-    .lean()
-    .then(() => {
-      userList.splice(userList.indexOf(username) + 1, 1)
-    })
-  return
+function userLeave(username) {
+userList.splice(userList.findIndex(user => user.name === username),1);
 }
 
 module.exports = {

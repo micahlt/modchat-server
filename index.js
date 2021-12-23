@@ -1,4 +1,4 @@
-const VERSION = "0.5.1"
+const VERSION = "0.8.0"
 const express = require("express")
 const bodyParser = require("body-parser")
 const cors = require("cors")
@@ -6,7 +6,7 @@ const cors = require("cors")
 const app = express()
 const fetch = require("node-fetch")
 const port = process.env.PORT || 8000
-
+fil
 app.use(bodyParser.json())
 app.use(cors())
 
@@ -15,8 +15,17 @@ mongoose.connect(process.env.MONGO_URL)
 
 // Schemas
 const User = require("./models/user.js")
-const Message = require("./models/message.js")
 const Room = require("./models/room.js")
+
+Room.find().then((r) => {
+  if (JSON.stringify(r) == "[]") {
+    Room.create({
+      messages: [],
+      name: "general",
+      message_id: 0,
+    })
+  }
+})
 
 const base64 = require("base-64")
 const socket = require("socket.io")
@@ -56,11 +65,6 @@ require("socketio-auth")(io, {
 
 const cryptoRandomString = require("crypto-random-string")
 const { getCurrentUser, userLeave, userJoin, userList } = require("./user.js")
-
-Room.create({
-  messages: [],
-  name: "default",
-}) // creates mongo object for default room
 
 app.get("/", (req, res) => {
   res.send("modchat-server is running")
@@ -168,20 +172,48 @@ app.post("/api/login", async (req, res) => {
 //everything related to socketio will go here
 io.on("connection", (socket) => {
   //when new user join room
-  socket.on("joinRoom", ({ username, roomname, token }) => {
+  socket.on("joinRoom", async ({ username, roomname, token }) => {
     //* create user
     /*
     if (username == 'Unauthed User') {
       console.log(`An ${'unauthenicated user'} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`)
       return 1;
     } */
-    console.log("Joining user to chat")
+    Room.findOne({name: roomname}).then((r) => {
+      if (!r) {
+        Room.create({
+          messages: [],
+          name: roomname,
+          message_id: 0,
+        })
+      }
+    })
+    console.log("Joining user to chat") 
 
-    const user = userJoin(socket.id, username, roomname, token)
+    const oldUser = User.findOne({username: username});
+
+    const user = userJoin(socket.id, username, roomname)
     socket.join(roomname)
     console.log(
       `${username} connected on socket ${socket.id} in room ${roomname}`
     )
+
+    const roomStorage = await Room.findOne({
+      name: roomname,
+    }).lean()
+      if(roomStorage) {
+      roomStorage.messages.forEach(i => {
+          io.to(socket.id).emit('message', {
+            username: i.username,
+            profilePicture: i.profile_picture,
+            type: 'text',
+            content: i.message, 
+            id: i.message_id,
+            old: true
+          });
+        })
+      }
+
     //* Broadcast message to everyone except user that he has joined
     io.to(roomname).emit("message", {
       userId: "000000",
@@ -220,59 +252,81 @@ io.on("connection", (socket) => {
   })
 
   //when somebody sends text
-  socket.on("chat", (object) => {
+  socket.on("chat", async (object) => {
     if (!object || object == null) {
       console.log(`Someone has attempted to DoS the server on listener 'chat'.`)
       return
     }
-    let user
-    User.findOne(
-      {
-        username: object.username,
-      },
-      (err, docs) => {
-        user = docs
-        const content = object.content
-        // moderate message with external server
-        fetch("https://mc-filterbot.micahlt.repl.co/api/checkstring", {
-          method: "POST",
-          body: content,
-        }).then((res) => {
-          if (res.status == 200 && object.content) {
-            const id = cryptoRandomString(34)
+    const user = await User.findOne({
+      username: object.username,
+    })
+    const oldID = await Room.findOne({
+      name: user.room,
+    })
+    const id = oldID.message_id + 1
 
-            io.to(user.room).emit("message", {
-              username: user.username,
-              profilePicture: user.scratch_picture,
-              type: "text",
-              content: object.content,
-              id: id,
-            })
-            /*
-            Message.create({
-              username: user.username,
-              message: object.content,
-              profile_picture: user.scratch_picture,
-              time: 50,
-              message_id: id,
-            })
-            Room.updateOne(
-              {
-                name: user.room,
-              },
-              {
-                $push: {
-                  messages: { message_id: id },
-                },
-              }
-            )
-            */
-          }
+    const content = object.content
+
+    // moderate message with external server
+    fetch("https://mc-filterbot.micahlt.repl.co/api/checkstring", {
+      method: "POST",
+      body: content,
+    }).then((res) => {
+      if (res.status == 200 && content) {
+        io.to(user.room).emit("message", {
+          username: user.username,
+          profilePicture: user.scratch_picture,
+          type: "text",
+          content: content,
+          id: id,
         })
       }
-    )
-  })
+    })
 
+    await Room.updateOne(
+      {
+        message_id: oldID.message_id,
+      },
+      {
+        $set: {
+          message_id: id,
+        },
+      }
+    )
+
+    const message = {
+      username: user.username,
+      message: content,
+      profile_picture: user.scratch_picture,
+      time: 50,
+      message_id: id,
+    }
+
+    await Room.updateOne(
+      {
+        name: user.room,
+      },
+      { $push: { messages: message } }
+    )
+
+    const room = await Room.findOne({
+      name: user.room,
+    }).lean()
+
+    if (room.messages.length > 100) {
+      await Room.updateOne(
+        {
+          username: user.username,
+        },
+        {
+          $pop: {
+            messages: -1,
+          },
+        }
+      )
+    }
+    
+  })
   // Disconnect , when user leave room
   socket.on("disconnect", async () => {
     const user = await getCurrentUser(socket.id)
@@ -281,7 +335,6 @@ io.on("connection", (socket) => {
       console.log(`An unauthenicated user disconnected`)
       return 1
     } else {
-      console.log(`${user.username} left the ${user.room} room`)
       io.to(user.room).emit("message", {
         userId: "0000000",
         username: "Modchat Bot",
@@ -294,3 +347,4 @@ io.on("connection", (socket) => {
     userLeave(socket.id, user.username, user.room)
   })
 })
+

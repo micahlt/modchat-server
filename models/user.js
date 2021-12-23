@@ -10,8 +10,7 @@ const UserSchema = new mongoose.Schema(
     room: { type: String },
     status: { type: String },
   },
-  { strict: false },
-  { collection: "users" }
+  { strict: false }
 )
 
 const model = mongoose.model("UserSchema", UserSchema)

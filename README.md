@@ -1,4 +1,4 @@
-<div align="center">
+check mc <div align="center">
 <img src="https://github.com/micahlt/modchat-vue/raw/master/src/assets/modchat-pfp.png" width="150px" height="auto">
 
 # modchat-server
