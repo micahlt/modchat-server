@@ -35,6 +35,7 @@ var server = app.listen(
   console.log(`Server is running on port ${process.env.PORT || 3000}.`)
 )
 const io = socket(server, {
+  pingTimeout: 120000, // tries to fix too many reconnects
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
@@ -66,7 +67,7 @@ const cryptoRandomString = require("crypto-random-string")
 const { getCurrentUser, userLeave, userJoin, userList } = require("./user.js")
 
 app.get("/", (req, res) => {
-  res.send("modchat-server is running")
+  res.send(`modchat-server ${VERSION} is running`)
 })
 
 app.post("/api/soa2code", (req, res) => {
