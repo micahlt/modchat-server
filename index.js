@@ -35,7 +35,7 @@ var server = app.listen(
   console.log(`Server is running on port ${process.env.PORT || 3000}.`)
 )
 const io = socket(server, {
-  pingTimeout: 120000, // tries to fix too many reconnects
+  pingTimeout: 60000, // tries to fix too many reconnects
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
