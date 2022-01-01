@@ -1,13 +1,30 @@
 const VERSION = "0.8.0"
 const express = require("express")
+const helmet = require("helmet");
+
+const replaceAll = require('string.prototype.replaceall');
+const createDOMPurify = require('dompurify');
+const { JSDOM } = require('jsdom');
+const window = new JSDOM('').window;
+const DOMPurify = createDOMPurify(window);
+DOMPurify.setConfig({ALLOWED_TAGS: []});
+const safeHTML = (dirty) => {
+  dirty = DOMPurify.sanitize(dirty);
+  return dirty;
+}
+
 const bodyParser = require("body-parser")
 const cors = require("cors")
 
 const app = express()
+
 const fetch = require("node-fetch")
 const port = process.env.PORT || 8000;
+
 app.use(bodyParser.json())
 app.use(cors())
+app.use(helmet())
+
 
 const mongoose = require("mongoose")
 mongoose.connect(process.env.MONGO_URL)
@@ -207,7 +224,7 @@ io.on("connection", (socket) => {
             username: i.username,
             profilePicture: i.profile_picture,
             type: 'text',
-            content: i.message, 
+            content: safeHTML(i.message), 
             id: i.message_id,
             old: true
           });
@@ -220,7 +237,7 @@ io.on("connection", (socket) => {
       username: "Modchat Bot",
       profilePicture: "https://cdn.micahlindley.com/assets/modchat-pfp.png",
       type: "text",
-      content: `🎉 @${username} has joined the chat 🎉`,
+      content: safeHTML(`🎉 @${username} has joined the chat 🎉`),
       id: cryptoRandomString(34),
     })
 
@@ -265,7 +282,7 @@ io.on("connection", (socket) => {
     })
     const id = oldID.message_id + 1
 
-    const content = object.content
+    const content = safeHTML(object.content)
 
     // moderate message with external server
     fetch("https://mc-filterbot.micahlt.repl.co/api/checkstring", {
@@ -280,6 +297,8 @@ io.on("connection", (socket) => {
           content: content,
           id: id,
         })
+      } else {
+        return;
       }
     })
 
@@ -340,7 +359,7 @@ io.on("connection", (socket) => {
         username: "Modchat Bot",
         profilePicture: "https://cdn.micahlindley.com/assets/modchat-pfp.png",
         type: "text",
-        content: `😥 @${user.username} left the chat 😥`,
+        content: safeHTML(`😥 @${user.username} left the chat 😥`),
         id: cryptoRandomString(34),
       })
     }

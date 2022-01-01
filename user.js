@@ -47,7 +47,7 @@ async function getCurrentUser(socket_id) {
 
 // User leaves chat
 function userLeave(username) {
-userList.splice(userList.findIndex(user => user.name === username),1);
+ userList.splice(userList.indexOf(username) + 1, 1)
 }
 
 module.exports = {
