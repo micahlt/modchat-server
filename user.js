@@ -1,6 +1,6 @@
 const ScratchLib = require("scratchlib")
 const User = require("./models/user.js")
-let userList = [];
+let userList = []
 
 // Join user to chat
 function userJoin(socket, username, room) {
@@ -18,7 +18,10 @@ function userJoin(socket, username, room) {
         },
       }
     ).then(() => {
-      if (!userList.includes(username)) {
+      let index = userList.findIndex((u) => {
+        return u.name == username
+      })
+      if (index != -1) {
         userList.push({
           room: room,
           name: username,
@@ -47,12 +50,12 @@ async function getCurrentUser(socket_id) {
 
 // User leaves chat
 function userLeave(username) {
-  console.log('looking for username', username)
+  console.log("looking for username", username)
   let index = userList.findIndex((u) => {
-    return u.name == username;
-  });
-  userList.splice(index, 1);
-  console.log('Removed user at index', index)
+    return u.name == username
+  })
+  userList.splice(index, 1)
+  console.log("Removed user at index", index)
 }
 
 module.exports = {

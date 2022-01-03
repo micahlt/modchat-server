@@ -290,10 +290,13 @@ io.on("connection", (socket) => {
     }
 
     // moderate message with external server
-    const res = await fetch("https://mc-filterbot.micahlt.repl.co/api/checkstring", {
-      method: "POST",
-      body: content,
-    })
+    const res = await fetch(
+      "https://mc-filterbot.micahlt.repl.co/api/checkstring",
+      {
+        method: "POST",
+        body: content,
+      }
+    )
     if (res.status == 200) {
       io.to(user.room).emit("message", {
         username: user.username,
@@ -363,6 +366,6 @@ io.on("connection", (socket) => {
         id: cryptoRandomString(34),
       })
     }
-    userLeave(user.username);
+    userLeave(user.username)
   })
 })
