@@ -21,7 +21,7 @@ function userJoin(socket, username, room) {
       let index = userList.findIndex((u) => {
         return u.name == username
       })
-      if (index != -1) {
+      if (index == -1) {
         userList.push({
           room: room,
           name: username,
