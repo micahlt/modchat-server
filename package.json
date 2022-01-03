@@ -1,6 +1,6 @@
 {
   "name": "modchat-server",
-  "version": "0.8.0",
+  "version": "0.8.3",
   "description": "Backend component for Modchat, a moderated chat platform designed for Scratchers",
   "main": "index.js",
   "scripts": {

@@ -1,16 +1,18 @@
-const VERSION = "0.8.0"
+const VERSION = "0.8.3"
 const express = require("express")
-const helmet = require("helmet");
+const helmet = require("helmet")
 
-const replaceAll = require('string.prototype.replaceall');
-const createDOMPurify = require('dompurify');
-const { JSDOM } = require('jsdom');
-const window = new JSDOM('').window;
-const DOMPurify = createDOMPurify(window);
-DOMPurify.setConfig({ALLOWED_TAGS: []});
+const replaceAll = require("string.prototype.replaceall")
+const createDOMPurify = require("dompurify")
+const { JSDOM } = require("jsdom")
+const window = new JSDOM("").window
+const DOMPurify = createDOMPurify(window)
+DOMPurify.setConfig({ ALLOWED_TAGS: [] })
 const safeHTML = (dirty) => {
-  dirty = DOMPurify.sanitize(dirty);
-  return dirty;
+  dirty = replaceAll(dirty, "![", "<img>")
+  dirty = replaceAll(dirty, "!(", "<img>")
+  dirty = DOMPurify.sanitize(dirty)
+  return dirty
 }
 
 const bodyParser = require("body-parser")
@@ -19,12 +21,11 @@ const cors = require("cors")
 const app = express()
 
 const fetch = require("node-fetch")
-const port = process.env.PORT || 8000;
+const port = process.env.PORT || 8000
 
 app.use(bodyParser.json())
 app.use(cors())
 app.use(helmet())
-
 
 const mongoose = require("mongoose")
 mongoose.connect(process.env.MONGO_URL)
@@ -196,7 +197,7 @@ io.on("connection", (socket) => {
       console.log(`An ${'unauthenicated user'} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`)
       return 1;
     } */
-    Room.findOne({name: roomname}).then((r) => {
+    Room.findOne({ name: roomname }).then((r) => {
       if (!r) {
         Room.create({
           messages: [],
@@ -205,9 +206,9 @@ io.on("connection", (socket) => {
         })
       }
     })
-    console.log("Joining user to chat") 
+    console.log("Joining user to chat")
 
-    const oldUser = User.findOne({username: username});
+    const oldUser = User.findOne({ username: username })
 
     const user = userJoin(socket.id, username, roomname)
     socket.join(roomname)
@@ -218,18 +219,18 @@ io.on("connection", (socket) => {
     const roomStorage = await Room.findOne({
       name: roomname,
     }).lean()
-      if(roomStorage) {
-      roomStorage.messages.forEach(i => {
-          io.to(socket.id).emit('message', {
-            username: i.username,
-            profilePicture: i.profile_picture,
-            type: 'text',
-            content: safeHTML(i.message), 
-            id: i.message_id,
-            old: true
-          });
+    if (roomStorage) {
+      roomStorage.messages.forEach((i) => {
+        io.to(socket.id).emit("message", {
+          username: i.username,
+          profilePicture: i.profile_picture,
+          type: "text",
+          content: safeHTML(i.message),
+          id: i.message_id,
+          old: true,
         })
-      }
+      })
+    }
 
     //* Broadcast message to everyone except user that he has joined
     io.to(roomname).emit("message", {
@@ -284,67 +285,66 @@ io.on("connection", (socket) => {
 
     const content = safeHTML(object.content)
 
-    // moderate message with external server
-    fetch("https://mc-filterbot.micahlt.repl.co/api/checkstring", {
-      method: "POST",
-      body: content,
-    }).then((res) => {
-      if (res.status == 200 && content) {
-        io.to(user.room).emit("message", {
-          username: user.username,
-          profilePicture: user.scratch_picture,
-          type: "text",
-          content: content,
-          id: id,
-        })
-      } else {
-        return;
-      }
-    })
-
-    await Room.updateOne(
-      {
-        message_id: oldID.message_id,
-      },
-      {
-        $set: {
-          message_id: id,
-        },
-      }
-    )
-
-    const message = {
-      username: user.username,
-      message: content,
-      profile_picture: user.scratch_picture,
-      time: 50,
-      message_id: id,
+    if (!content) {
+      return
     }
 
-    await Room.updateOne(
-      {
-        name: user.room,
-      },
-      { $push: { messages: message } }
-    )
-
-    const room = await Room.findOne({
-      name: user.room,
-    }).lean()
-
-    if (room.messages.length > 100) {
+    // moderate message with external server
+    const res = await fetch("https://mc-filterbot.micahlt.repl.co/api/checkstring", {
+      method: "POST",
+      body: content,
+    })
+    if (res.status == 200) {
+      io.to(user.room).emit("message", {
+        username: user.username,
+        profilePicture: user.scratch_picture,
+        type: "text",
+        content: content,
+        id: id,
+      })
       await Room.updateOne(
         {
-          username: user.username,
+          message_id: oldID.message_id,
         },
         {
-          $pop: {
-            messages: -1,
+          $set: {
+            message_id: id,
           },
         }
       )
+
+      const message = {
+        username: user.username,
+        message: content,
+        profile_picture: user.scratch_picture,
+        time: 50,
+        message_id: id,
+      }
+
+      await Room.updateOne(
+        {
+          name: user.room,
+        },
+        { $push: { messages: message } }
+      )
+
+      const room = await Room.findOne({
+        name: user.room,
+      }).lean()
+
+      if (room.messages.length > 100) {
+        await Room.updateOne(
+          {
+            username: user.username,
+          },
+          {
+            $pop: {
+              messages: -1,
+            },
+          }
+        )
+      }
     }
-    
   })
   // Disconnect , when user leave room
   socket.on("disconnect", async () => {
@@ -363,7 +363,6 @@ io.on("connection", (socket) => {
         id: cryptoRandomString(34),
       })
     }
-    userLeave(socket.id, user.username, user.room)
+    userLeave(user.username);
   })
 })
-
