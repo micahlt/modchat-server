@@ -1,4 +1,4 @@
-;const VERSION = "0.8.3"
+const VERSION = "0.8.3"
 const express = require("express")
 var cookie = require("cookie")
 const helmet = require("helmet")
