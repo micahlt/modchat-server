@@ -18,16 +18,11 @@ function userJoin(socket, username, room) {
         },
       }
     ).then(() => {
-      let index = userList.findIndex((u) => {
-        return u.name == username
+      userList.push({
+        room: room,
+        name: username,
+        scratch_picture: data.profile.images["60x60"],
       })
-      if (index == -1) {
-        userList.push({
-          room: room,
-          name: username,
-          scratch_picture: data.profile.images["60x60"],
-        })
-      }
       User.findOne(
         {
           username: username,
@@ -41,21 +36,23 @@ function userJoin(socket, username, room) {
 }
 
 // Get current user
-async function getCurrentUser(socket_id) {
+async function getCurrentUser(username) {
   const user = await User.findOne({
-    socket_id: socket_id,
+    username: username
   }).lean()
   return user
 }
 
 // User leaves chat
 function userLeave(username) {
-  console.log("looking for username", username)
+  console.log(`🔎 looking for ${username} in MongoDB`)
   let index = userList.findIndex((u) => {
     return u.name == username
   })
   userList.splice(index, 1)
-  console.log("Removed user at index", index)
+  if (index != -1) {
+    console.log("✅ Removed user from online list at index ", index)
+  }
 }
 
 module.exports = {

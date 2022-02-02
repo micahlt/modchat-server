@@ -1,19 +1,24 @@
 const VERSION = "0.8.3"
 const express = require("express")
+var cookie = require("cookie")
 const helmet = require("helmet")
 
 const replaceAll = require("string.prototype.replaceall")
-const createDOMPurify = require("dompurify")
-const { JSDOM } = require("jsdom")
-const window = new JSDOM("").window
-const DOMPurify = createDOMPurify(window)
-DOMPurify.setConfig({ ALLOWED_TAGS: [] })
 const safeHTML = (dirty) => {
   dirty = replaceAll(dirty, "![", "<img>")
   dirty = replaceAll(dirty, "!(", "<img>")
-  dirty = DOMPurify.sanitize(dirty)
+  dirty = String(dirty)
+    .split("&")
+    .join("&amp;")
+    .split("<")
+    .join("&lt;")
+    .split(">")
+    .join("&gt;")
   return dirty
 }
+
+const cryptoRandomString = require("crypto-random-string")
+const cookieParser = require("cookie-parser")
 
 const bodyParser = require("body-parser")
 const cors = require("cors")
@@ -24,10 +29,21 @@ const fetch = require("node-fetch")
 const port = process.env.PORT || 8000
 
 app.use(bodyParser.json())
-app.use(cors())
+app.use(
+  cors({
+    origin: [
+      "https://modchat-vue.mcv2.repl.co",
+      "https://modchat.micahlindley.com",
+    ],
+    credentials: true,
+    methods: ["GET", "POST"],
+  })
+)
 app.use(helmet())
+app.use(cookieParser())
 
 const mongoose = require("mongoose")
+
 mongoose.connect(process.env.MONGO_URL)
 
 // Schemas
@@ -50,47 +66,25 @@ const bcrypt = require("bcryptjs")
 
 var server = app.listen(
   port,
-  console.log(`Server is running on port ${process.env.PORT || 3000}.`)
+  console.log(`🟢 Server is running on port ${process.env.PORT || 3000}.`)
 )
 const io = socket(server, {
   pingTimeout: 60000, // tries to fix too many reconnects
   cors: {
-    origin: "*",
     methods: ["GET", "POST"],
+    origin: true,
+    credentials: true,
   },
 })
 
-require("socketio-auth")(io, {
-  authenticate: async (socket, data, callback) => {
-    //get credentials sent by the client
-    var username = data.username
-    var password = data.password
-    User.findOne(
-      {
-        username: username,
-      },
-      async (err, user) => {
-        //inform the callback of auth success/failure
-        if (err || !user) return callback(new Error("User not found"))
-        if (!bcrypt.compare(password, user.password)) {
-          console.log("UNAUTHED USER")
-        }
-        return callback(null, bcrypt.compare(password, user.password))
-      }
-    )
-  },
-})
-
-const cryptoRandomString = require("crypto-random-string")
 const { getCurrentUser, userLeave, userJoin, userList } = require("./user.js")
 
 app.get("/", (req, res) => {
-  res.send(`modchat-server ${VERSION} is running`)
+  res.send(`🏁 modchat-server ${VERSION} is running`)
 })
 
 app.post("/api/soa2code", (req, res) => {
   if (req.body.code && req.body.state) {
-    console.log("Passed checks")
     fetch("https://oauth2.scratch-wiki.info/w/rest.php/soa2/v0/tokens", {
       method: "POST",
       body: JSON.stringify({
@@ -119,23 +113,11 @@ app.post("/api/soa2code", (req, res) => {
             .then((newResJson) => {
               if (newResJson.user_id) {
                 newResJson.session = cryptoRandomString(46)
-                console.log("Adding user to mongoose")
-                res.json(newResJson)
-                User.findOneAndUpdate(
-                  {
+                console.log("💾 Adding user to mongoose")
+                User.create({
                     username: newResJson.user_name,
-                  },
-                  {
-                    username: newResJson.user_name,
-                    token: newResJson.session,
-                  }
-                ).then((r) => {
-                  User.create({
-                    username: newResJson.user_name,
-                    token: newResJson.session,
-                    status: "offline",
                   })
-                })
+                res.json(newResJson)
               }
             })
         }
@@ -144,12 +126,12 @@ app.post("/api/soa2code", (req, res) => {
 })
 
 app.post("/api/updatepassword", async (req, res) => {
-  if (req.body.token && req.body.password) {
+  if (req.body.username && req.body.password) {
     const newPwd = await bcrypt.hash(req.body.password, 10)
-    const token = req.body.token
+    const username = req.body.username
     await User.updateOne(
       {
-        token,
+        username,
       },
       {
         $set: {
@@ -160,212 +142,448 @@ app.post("/api/updatepassword", async (req, res) => {
     )
     res.sendStatus(200)
   } else {
-    console.log("didnt include body")
+    console.warn("❌ Request did not include a body")
     res.sendStatus(403)
   }
 })
 
 app.post("/api/login", async (req, res) => {
   if (req.body.username && req.body.password) {
-    console.log("Passed checks")
     const { username, password } = req.body
-
     const user = await User.findOne({
       username,
     }).lean()
     if (!user) {
-      console.log("Username or password incorrect.")
+      console.warn("❌ Username or password incorrect")
       res.sendStatus(400)
     }
+    if (user.ban_expiry) {
+      if (Date.now() > user.ban_expiry) {
+        await User.updateOne(
+          {
+            username,
+          },
+          {
+            $set: {
+              banned: false,
+            },
+          }
+        )
+      } else {
+        return
+      }
+    }
     if (await bcrypt.compare(password, user.password)) {
-      console.log(`Correct username and password`)
-      res.send(req.body.token)
+      console.log(`✅ Correct username and password`)
+      const access_token = cryptoRandomString(65)
+      const refresh_token = cryptoRandomString(65)
+      await User.updateOne(
+        {
+          username,
+        },
+        {
+          $set: {
+            tokens: {
+              access_token: access_token,
+              refresh_token: refresh_token,
+              access_expiry: Date.now() + 30000,
+              refresh_expiry: Date.now() + 8640000000,
+            },
+          },
+        }
+      )
+      res.cookie("refresh_token", refresh_token, {
+        secure: true,
+        httpOnly: true,
+        maxAge: 60 * 60 * 24 * 100 * 1000,
+        sameSite: "strict",
+      })
+      res.send({
+        access_token,
+      })
     }
   } else {
-    console.log("Missing username, password, or both")
+    console.warn("🔐 Missing username, password, or both")
     res.sendStatus(400)
   }
 })
 
-//everything related to socketio will go here
-io.on("connection", (socket) => {
-  //when new user join room
-  socket.on("joinRoom", async ({ username, roomname, token }) => {
-    //* create user
-    /*
-    if (username == 'Unauthed User') {
-      console.log(`An ${'unauthenicated user'} connected on socket ${socket.id.bgBlue} in room ${roomname.bgBlue}`)
-      return 1;
-    } */
-    Room.findOne({ name: roomname }).then((r) => {
-      if (!r) {
-        Room.create({
-          messages: [],
-          name: roomname,
-          message_id: 0,
-        })
-      }
-    })
-    console.log("Joining user to chat")
-
-    const oldUser = User.findOne({ username: username })
-
-    const user = userJoin(socket.id, username, roomname)
-    socket.join(roomname)
-    console.log(
-      `${username} connected on socket ${socket.id} in room ${roomname}`
-    )
-
-    const roomStorage = await Room.findOne({
-      name: roomname,
-    }).lean()
-    if (roomStorage) {
-      roomStorage.messages.forEach((i) => {
-        io.to(socket.id).emit("message", {
-          username: i.username,
-          profilePicture: i.profile_picture,
-          type: "text",
-          content: safeHTML(i.message),
-          id: i.message_id,
-          old: true,
-        })
-      })
-    }
-
-    //* Broadcast message to everyone except user that he has joined
-    io.to(roomname).emit("message", {
-      userId: "000000",
-      username: "Modchat Bot",
-      profilePicture: "https://cdn.micahlindley.com/assets/modchat-pfp.png",
-      type: "text",
-      content: safeHTML(`🎉 @${username} has joined the chat 🎉`),
-      id: cryptoRandomString(34),
-    })
-
-    app.get("/api/finduser", (req, res) => {
-      User.findOne(
-        {
-          socket: socket.id,
-        },
-        (err, docs) => {
-          res.send(docs)
-          return docs
-        }
-      )
-    })
-  })
-
-  app.get("/api/onlineusers", (req, res) => {
-    res.send({
-      online: userList,
-    })
-  })
-
-  socket.on("leaveRoom", (room) => {
-    socket.leave(room)
-  })
-
-  socket.on("userTyping", (object) => {
-    io.to(object.room).emit("isTyping", object)
-  })
-
-  //when somebody sends text
-  socket.on("chat", async (object) => {
-    if (!object || object == null) {
-      console.log(`Someone has attempted to DoS the server on listener 'chat'.`)
-      return
-    }
-    const user = await User.findOne({
-      username: object.username,
-    })
-    const oldID = await Room.findOne({
-      name: user.room,
-    })
-    const id = oldID.message_id + 1
-
-    const content = safeHTML(object.content)
-
-    if (!content) {
-      return
-    }
-
-    // moderate message with external server
-    const res = await fetch(
-      "https://mc-filterbot.micahlt.repl.co/api/checkstring",
-      {
-        method: "POST",
-        body: content,
-      }
-    )
-    if (res.status == 200) {
-      io.to(user.room).emit("message", {
-        username: user.username,
-        profilePicture: user.scratch_picture,
-        type: "text",
-        content: content,
-        id: id,
-      })
-      await Room.updateOne(
-        {
-          message_id: oldID.message_id,
-        },
-        {
-          $set: {
-            message_id: id,
-          },
-        }
-      )
-
-      const message = {
-        username: user.username,
-        message: content,
-        profile_picture: user.scratch_picture,
-        time: 50,
-        message_id: id,
-      }
-
-      await Room.updateOne(
-        {
-          name: user.room,
-        },
-        { $push: { messages: message } }
-      )
-
-      const room = await Room.findOne({
-        name: user.room,
-      }).lean()
-
-      if (room.messages.length > 100) {
-        await Room.updateOne(
+app.post("/api/refresh", async (req, res) => {
+    if (req.cookies["refresh_token"] && req.body.username) {
+      const user = await User.findOne({ username: req.body.username });
+      if (user) {
+      const token = user.tokens[0].refresh_token
+      if (req.cookies["refresh_token"] == token) {
+        if(Date.now() < user.tokens[0].refresh_expiry) {
+        const access_token = cryptoRandomString(65)
+        const refresh_token = cryptoRandomString(65)
+        await User.updateOne(
           {
-            username: user.username,
+            username: req.body.username,
           },
           {
-            $pop: {
-              messages: -1,
+            $set: {
+              tokens: {
+                access_token: access_token,
+                refresh_token: refresh_token,
+                access_expiry: Date.now() + 8300000, // 8300000
+                refresh_expiry: Date.now() + 86400000, // 86400000
+              },
             },
           }
         )
+        res.cookie("refresh_token", refresh_token, {
+          secure: true,
+          httpOnly: true,
+          maxAge: 60 * 60 * 24 * 100 * 1000,
+          sameSite: "strict",
+        })
+        res.send({
+          access_token,
+        })
+        } else {
+          console.log("⚠️ Refresh token expired")
+          res.sendStatus(403)
+        }
+      } else {
+        res.sendStatus(403)
       }
+    } else {
+      console.log("Improper use of the refresh endpoint.")
+      res.sendStatus(301)
+    }
     }
   })
-  // Disconnect , when user leave room
-  socket.on("disconnect", async () => {
-    const user = await getCurrentUser(socket.id)
-    // * deconste user from users & emit that user has left the chat
-    if (!user) {
-      console.log(`An unauthenicated user disconnected`)
-      return 1
-    } else {
-      io.to(user.room).emit("message", {
-        userId: "0000000",
-        username: "Modchat Bot",
-        profilePicture: "https://cdn.micahlindley.com/assets/modchat-pfp.png",
-        type: "text",
-        content: safeHTML(`😥 @${user.username} left the chat 😥`),
-        id: cryptoRandomString(34),
-      })
+
+//everything related to socketio will go here
+io.on("connection", (socket) => {
+  const eventList = []
+  function authUser(username, access_token) {
+    function getObject() {
+      return User.findOne({ username: username })
     }
-    userLeave(user.username)
+    return getObject().then((o) => {
+      if (o) {
+        socket.username = username;
+        if (o.tokens[0].access_expiry > Date.now()) {
+          const res = access_token == o.tokens[0].access_token
+          if (o.banned == true) {
+            socket.emit("bannedUser", {
+              reason: o.ban_reason,
+              expiry: o.ban_expiry,
+            })
+            socket.leave(o.room)
+            return {
+              state: false,
+            }
+          }
+          if (res == true) {
+            return {
+              state: true,
+              object: o,
+            }
+          } else {
+            return {
+              state: false,
+            }
+          }
+        } else {
+          const latestEvent = eventList[eventList.length - 1]
+          io.to(socket.id).emit("refresh", {
+            name: latestEvent.event,
+            args: latestEvent.args,
+          })
+          return {
+            state: false,
+          }
+        }
+      } else {
+        return {
+          state: false,
+        }
+      }
+    })
+  }
+
+  socket.onAny((event, args) => {
+    if (event != "userTyping") {
+      eventList.push({ event, args })
+    }
+  })
+
+  //when a user joins room
+  socket.on("joinRoom", async ({ username, roomname, access_token }) => {
+    authUser(username, access_token).then(async (authed) => {
+      const permaUsername = username
+      if (authed.state == true) {
+        //* create user
+        Room.findOne({ name: roomname }).then((r) => {
+          if (!r) {
+            Room.create({
+              messages: [],
+              name: roomname,
+              message_id: 0,
+            })
+          }
+        })
+        console.log("✅ Authenticated")
+
+        const oldUser = authed.object
+
+        const user = userJoin(socket.id, username, roomname)
+        socket.join(roomname)
+        console.log(
+          `🔗 ${username} connected on socket ${socket.id} in room ${roomname}`
+        )
+
+        const roomStorage = await Room.findOne({
+          name: roomname,
+        }).lean()
+        if (roomStorage) {
+          roomStorage.messages.forEach((i) => {
+            io.to(socket.id).emit("message", {
+              username: i.username,
+              profilePicture: i.profile_picture,
+              type: "text",
+              content: i.message,
+              id: i.message_id,
+              old: true,
+            })
+          })
+        }
+
+        //* Broadcast message to everyone except user that he has joined
+        io.to(roomname).emit("message", {
+          userId: "000000",
+          username: "Modchat Bot",
+          profilePicture: "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+          type: "text",
+          content: safeHTML(`🎉 @${username} has joined the chat 🎉`),
+          id: cryptoRandomString(34),
+        })
+
+        app.post("/api/logout", async (req, res) => {
+          if (req.body.username && req.cookies["access_token"]) {
+            authUser(username, req.cookies["access_token"]).then(
+              async (authed) => {
+                if (authed.state == true) {
+                  await User.updateOne(
+                    { username: req.body.username },
+                    {
+                      $set: {
+                        tokens: {
+                          access_expiry: 0,
+                          refresh_expiry: 0,
+                        },
+                      },
+                    }
+                  )
+                  res.sendStatus(200)
+                } else {
+                  console.warn("🔐 Unauthenticated")
+                  res.sendStatus(400)
+                }
+              }
+            )
+          } else {
+            console.warn("🔐 Missing username or token.")
+            res.sendStatus(400)
+          }
+        })
+
+        app.get("/api/onlineusers", (req, res) => {
+          res.send({
+            online: userList,
+          })
+        })
+
+        socket.on("leaveRoom", (room) => {
+          socket.leave(room)
+        })
+
+        socket.on("userTyping", (object) => {
+          if (object.username == socket.username) {
+            io.to(object.room).emit("isTyping", object)
+          }
+        })
+
+        //when somebody sends text
+        socket.on("chat", async (object) => {
+          authUser(object.username, object.access_token).then(
+            async (authed) => {
+              if (authed.state == true) {
+                if (!object || object == null) {
+                  console.warn(
+                    `⚠️ Someone has attempted to DoS the server on listener 'chat'.`
+                  )
+                  return
+                }
+                const user = authed.object
+                const oldID = await Room.findOne({
+                  name: user.room,
+                })
+                const id = oldID.message_id + 1
+
+                const content = safeHTML(object.content)
+
+                if (!content) {
+                  return
+                }
+
+                // moderate message with external server
+                const res = await fetch(
+                  "https://mc-filterbot.micahlt.repl.co/api/checkstring",
+                  {
+                    method: "POST",
+                    body: content,
+                  }
+                )
+                if (res.status == 200) {
+                  switch (content.split(" ")[0]) {
+                    case "/ban":
+                      const base = content.split(" ")
+                      let addOn = 0
+                      for (let i = 0; i < base.length / 2; i++) {
+                        const day = base[i]
+                        const specificTime = base[i + 1]
+                        console.log(specificTime)
+                        if (specificTime == "months") {
+                          addOn += 2629746000 * day
+                        } else if (specificTime == "days") {
+                          addOn += 86400000 * day
+                        } else if (specificTime == "weeks") {
+                          addOn += 604800000 * day
+                        }
+                      }
+                      const expiry = Date.now() + addOn
+
+                      function getNumberWithOrdinal(n) {
+                        var s = ["th", "st", "nd", "rd"],
+                          v = n % 100
+                        return n + (s[(v - 20) % 10] || s[v] || s[0])
+                      }
+
+                      const formatAMPM = (date) => {
+                        let hours = date.getHours()
+                        let minutes = date.getMinutes()
+                        let seconds = date.getSeconds()
+                        let ampm = hours >= 12 ? "PM" : "AM"
+                        hours = hours % 12
+                        hours = hours ? hours : 12
+                        minutes = minutes.toString().padStart(2, "0")
+                        let strTime =
+                          hours + ":" + minutes + ":" + seconds + " " + ampm
+                        return strTime
+                      }
+
+                      const list = content.split(" ").slice(3 + base.length / 2)
+                      const reason = list.join(" ")
+                      await User.updateOne(
+                        {
+                          username: content.split(" ")[1],
+                        },
+                        {
+                          $set: {
+                            banned: true,
+                            ban_expiry: expiry,
+                            ban_reason: reason,
+                          },
+                        }
+                      )
+                      break
+                    case "/unban":
+                      await User.updateOne(
+                        {
+                          username: content.split(" ")[1],
+                        },
+                        {
+                          $set: {
+                            banned: false,
+                          },
+                        }
+                      )
+                      break
+                    default:
+                      io.to(user.room).emit("message", {
+                        username: user.username,
+                        profilePicture: user.scratch_picture,
+                        type: "text",
+                        content: content,
+                        id: id,
+                      })
+                      await Room.updateOne(
+                        {
+                          message_id: oldID.message_id,
+                        },
+                        {
+                          $set: {
+                            message_id: id,
+                          },
+                        }
+                      )
+
+                      const message = {
+                        username: user.username,
+                        message: content,
+                        profile_picture: user.scratch_picture,
+                        time: 50,
+                        message_id: id,
+                      }
+
+                      await Room.updateOne(
+                        {
+                          name: user.room,
+                        },
+                        { $push: { messages: message } }
+                      )
+
+                      const room = await Room.findOne({
+                        name: user.room,
+                      }).lean()
+
+                      if (room.messages.length > 100) {
+                        await Room.updateOne(
+                          {
+                            username: user.username,
+                          },
+                          {
+                            $pop: {
+                              messages: -1,
+                            },
+                          }
+                        )
+                      }
+                      break
+                  }
+                }
+              }
+            }
+          )
+        })
+        // Disconnect , when user leave room
+        socket.on("disconnect", async () => {
+          console.log(socket.username, "disconnected")
+          const user = await getCurrentUser(socket.username)
+          // * deconste user from users & emit that user has left the chat
+          if (!user) {
+            console.log(`An unauthenicated user disconnected`)
+            return
+          } else {
+            io.to(user.room).emit("message", {
+              userId: "0000000",
+              username: "Modchat Bot",
+              profilePicture:
+                "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+              type: "text",
+              content: safeHTML(`😥 @${socket.username} left the chat 😥`),
+              id: cryptoRandomString(34),
+            })
+          }
+          userLeave(user.username);
+        })
+      } else {
+        console.warn("⚠️ Error authenticating user.")
+      }
+    })
   })
 })
