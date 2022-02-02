@@ -38,7 +38,7 @@ function userJoin(socket, username, room) {
 // Get current user
 async function getCurrentUser(username) {
   const user = await User.findOne({
-    username: username
+    username: username,
   }).lean()
   return user
 }

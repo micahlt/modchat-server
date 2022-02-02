@@ -115,8 +115,8 @@ app.post("/api/soa2code", (req, res) => {
                 newResJson.session = cryptoRandomString(46)
                 console.log("💾 Adding user to mongoose")
                 User.create({
-                    username: newResJson.user_name,
-                  })
+                  username: newResJson.user_name,
+                })
                 res.json(newResJson)
               }
             })
@@ -209,38 +209,38 @@ app.post("/api/login", async (req, res) => {
 })
 
 app.post("/api/refresh", async (req, res) => {
-    if (req.cookies["refresh_token"] && req.body.username) {
-      const user = await User.findOne({ username: req.body.username });
-      if (user) {
+  if (req.cookies["refresh_token"] && req.body.username) {
+    const user = await User.findOne({ username: req.body.username })
+    if (user) {
       const token = user.tokens[0].refresh_token
       if (req.cookies["refresh_token"] == token) {
-        if(Date.now() < user.tokens[0].refresh_expiry) {
-        const access_token = cryptoRandomString(65)
-        const refresh_token = cryptoRandomString(65)
-        await User.updateOne(
-          {
-            username: req.body.username,
-          },
-          {
-            $set: {
-              tokens: {
-                access_token: access_token,
-                refresh_token: refresh_token,
-                access_expiry: Date.now() + 8300000, // 8300000
-                refresh_expiry: Date.now() + 86400000, // 86400000
-              },
+        if (Date.now() < user.tokens[0].refresh_expiry) {
+          const access_token = cryptoRandomString(65)
+          const refresh_token = cryptoRandomString(65)
+          await User.updateOne(
+            {
+              username: req.body.username,
             },
-          }
-        )
-        res.cookie("refresh_token", refresh_token, {
-          secure: true,
-          httpOnly: true,
-          maxAge: 60 * 60 * 24 * 100 * 1000,
-          sameSite: "strict",
-        })
-        res.send({
-          access_token,
-        })
+            {
+              $set: {
+                tokens: {
+                  access_token: access_token,
+                  refresh_token: refresh_token,
+                  access_expiry: Date.now() + 8300000, // 8300000
+                  refresh_expiry: Date.now() + 86400000, // 86400000
+                },
+              },
+            }
+          )
+          res.cookie("refresh_token", refresh_token, {
+            secure: true,
+            httpOnly: true,
+            maxAge: 60 * 60 * 24 * 100 * 1000,
+            sameSite: "strict",
+          })
+          res.send({
+            access_token,
+          })
         } else {
           console.log("⚠️ Refresh token expired")
           res.sendStatus(403)
@@ -252,8 +252,8 @@ app.post("/api/refresh", async (req, res) => {
       console.log("Improper use of the refresh endpoint.")
       res.sendStatus(301)
     }
-    }
-  })
+  }
+})
 
 //everything related to socketio will go here
 io.on("connection", (socket) => {
@@ -264,7 +264,7 @@ io.on("connection", (socket) => {
     }
     return getObject().then((o) => {
       if (o) {
-        socket.username = username;
+        socket.username = username
         if (o.tokens[0].access_expiry > Date.now()) {
           const res = access_token == o.tokens[0].access_token
           if (o.banned == true) {
@@ -579,7 +579,7 @@ io.on("connection", (socket) => {
               id: cryptoRandomString(34),
             })
           }
-          userLeave(user.username);
+          userLeave(user.username)
         })
       } else {
         console.warn("⚠️ Error authenticating user.")
