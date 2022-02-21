@@ -44,7 +44,7 @@ app.use(cookieParser())
 
 const mongoose = require("mongoose")
 
-mongoose.connect(process.env.MONGO_URL)
+mongoose.connect(encodeURI(process.env.MONGO_URL))
 
 // Schemas
 const User = require("./models/user.js")
