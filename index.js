@@ -155,7 +155,8 @@ app.post("/api/login", async (req, res) => {
     }).lean()
     if (!user) {
       console.warn("❌ Username or password incorrect")
-      res.sendStatus(400)
+      res.status(400).send({ reason: "notSignedUp" })
+      return
     }
     if (user.ban_expiry) {
       if (Date.now() > user.ban_expiry) {
@@ -201,10 +202,12 @@ app.post("/api/login", async (req, res) => {
       res.send({
         access_token,
       })
+    } else {
+      res.status(400).send({ reason: "wrongPassword" })
     }
   } else {
     console.warn("🔐 Missing username, password, or both")
-    res.sendStatus(400)
+    res.status(400).send({ reason: "missingData" })
   }
 })
 
