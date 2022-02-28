@@ -1,12 +1,16 @@
-const VERSION = "0.8.3"
+const VERSION = "0.8.6"
 const express = require("express")
 var cookie = require("cookie")
 const helmet = require("helmet")
 
 const replaceAll = require("string.prototype.replaceall")
 const safeHTML = (dirty) => {
-  dirty = replaceAll(dirty, "![", "<img>")
-  dirty = replaceAll(dirty, "!(", "<img>")
+  dirty = replaceAll(dirty, "![", "")
+  dirty = replaceAll(dirty, "!(", "")
+  if(dirty.includes("‮")) {
+    reverseString(dirty)
+  }
+  dirty = replaceAll(dirty, "‮", "")
   dirty = String(dirty)
     .split("&")
     .join("&amp;")
@@ -15,6 +19,10 @@ const safeHTML = (dirty) => {
     .split(">")
     .join("&gt;")
   return dirty
+}
+
+function reverseString(str) {
+    return str.split("").reverse().join("");
 }
 
 const cryptoRandomString = require("crypto-random-string")
