@@ -187,11 +187,11 @@ app.post("/api/login", async (req, res) => {
             tokens: {
               access_token: access_token,
               refresh_token: refresh_token,
-              access_expiry: Date.now() + 30000,
+              access_expiry: Date.now() + 8300000,
               refresh_expiry: Date.now() + 8640000000,
             },
           },
-        }
+        }, {upsert: true, setDefaultsOnInsert:true}
       )
       res.cookie("refresh_token", refresh_token, {
         secure: true,
@@ -315,7 +315,7 @@ io.on("connection", (socket) => {
   })
 
   //when a user joins room
-  socket.on("joinRoom", async ({ username, roomname, access_token }) => {
+  socket.on("joinRoom", async ({ username, roomname, access_token, sameTab }) => {
     authUser(username, access_token).then(async (authed) => {
       const permaUsername = username
       if (authed.state == true) {
@@ -400,10 +400,6 @@ io.on("connection", (socket) => {
           })
         })
 
-        socket.on("leaveRoom", (room) => {
-          socket.leave(room)
-        })
-
         socket.on("userTyping", (object) => {
           if (object.username == socket.username) {
             io.to(object.room).emit("isTyping", object)
@@ -423,7 +419,7 @@ io.on("connection", (socket) => {
                 }
                 const user = authed.object
                 const oldID = await Room.findOne({
-                  name: user.room,
+                  name: object.room,
                 })
                 const id = oldID.message_id + 1
 
@@ -507,7 +503,7 @@ io.on("connection", (socket) => {
                       )
                       break
                     default:
-                      io.to(user.room).emit("message", {
+                      io.to(object.room).emit("message", {
                         username: user.username,
                         profilePicture: user.scratch_picture,
                         type: "text",
@@ -535,13 +531,13 @@ io.on("connection", (socket) => {
 
                       await Room.updateOne(
                         {
-                          name: user.room,
+                          name: object.room,
                         },
                         { $push: { messages: message } }
                       )
 
                       const room = await Room.findOne({
-                        name: user.room,
+                        name: object.room,
                       }).lean()
 
                       if (room.messages.length > 100) {
@@ -566,13 +562,8 @@ io.on("connection", (socket) => {
         // Disconnect , when user leave room
         socket.on("disconnect", async () => {
           console.log(socket.username, "disconnected")
-          const user = await getCurrentUser(socket.username)
           // * deconste user from users & emit that user has left the chat
-          if (!user) {
-            console.log(`An unauthenicated user disconnected`)
-            return
-          } else {
-            io.to(user.room).emit("message", {
+            io.to(roomname).emit("message", {
               userId: "0000000",
               username: "Modchat Bot",
               profilePicture:
@@ -581,8 +572,7 @@ io.on("connection", (socket) => {
               content: safeHTML(`😥 @${socket.username} left the chat 😥`),
               id: cryptoRandomString(34),
             })
-          }
-          userLeave(user.username)
+          userLeave(socket.username);
         })
       } else {
         console.warn("⚠️ Error authenticating user.")
