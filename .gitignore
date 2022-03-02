@@ -2,3 +2,4 @@ node_modules
 *.db
 users.db
 .replit
+.txt
