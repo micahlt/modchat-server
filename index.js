@@ -510,6 +510,16 @@ io.on("connection", (socket) => {
                         }
                       )
                       break
+                    case "/shrug":
+                      io.to(roomname).emit("message", {
+                        userId: "000000",
+                        username: "Modchat Bot",
+                        profilePicture: "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+                        type: "text",
+                        content: `**${user.username}** shrugged ¯\_(ツ)_/¯`,
+                        id: cryptoRandomString(34),
+                      })
+                      break
                     default:
                       io.to(object.room).emit("message", {
                         username: user.username,
