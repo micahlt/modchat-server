@@ -446,7 +446,8 @@ io.on("connection", (socket) => {
                   ).catch((err) => {
                     console.error("⚠️ " + err);
                   })
-                  if (res.status == 200) {
+                  if (res) {
+                    if (res.status == 200) {
                     switch (content.split(" ")[0]) {
                       case "/ban":
                         const base = content.split(" ")
@@ -576,6 +577,7 @@ io.on("connection", (socket) => {
                         }
                         break
                     }
+                  }
                   }
                 }
               }
