@@ -42,6 +42,7 @@ app.use(
     origin: [
       "https://modchat-vue.mcv2.repl.co",
       "https://modchat.micahlindley.com",
+      "https://s.modchat.micahlindley.com"
     ],
     credentials: true,
     methods: ["GET", "POST"],
@@ -74,7 +75,7 @@ const bcrypt = require("bcryptjs")
 
 var server = app.listen(
   port,
-  console.log(`🟢 Server is running on port ${process.env.PORT || 3000}.`)
+  console.log(`🟢 Server is running on port ${process.env.PORT || 8000}.`)
 )
 const io = socket(server, {
   pingTimeout: 60000, // tries to fix too many reconnects
