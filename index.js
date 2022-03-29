@@ -229,22 +229,26 @@ app.post("/api/refresh", async (req, res) => {
         (tokenArray) =>
           tokenArray.refresh_token === req.cookies["refresh_token"]
       )
-      if (token) {
+
+      if (token[0]) {
         if (Date.now() < token[0].refresh_expiry) {
           const access_token = cryptoRandomString(65)
           const refresh_token = cryptoRandomString(65)
-          const refreshTokenArray = tokenArray.filter(
-            (rt) => rt.refresh_token !== req.cookies["refresh_token"]
+          await User.updateOne(
+            {
+              username: req.body.username,
+            },
+            {
+              $push: {
+                tokens: {
+                  access_token: access_token,
+                  refresh_token: refresh_token,
+                  access_expiry: Date.now() + 8300000, // 8300000
+                  refresh_expiry: Date.now() + 86400000, // 86400000
+                },
+              },
+            }
           )
-
-          const newTokens = {
-            access_token: access_token,
-            refresh_token: refresh_token,
-            access_expiry: Date.now() + 8300000,
-            refresh_expiry: Date.now() + 86400000,
-          }
-          user.tokens = [...refreshTokenArray, newTokens]
-          user.save()
           res.cookie("refresh_token", refresh_token, {
             secure: true,
             httpOnly: true,
@@ -282,36 +286,38 @@ io.on("connection", (socket) => {
         const token = tokenArray.filter(
           (tokenArray) => tokenArray.access_token === access_token
         )
-        if (token[0].access_expiry > Date.now()) {
-          const res = access_token == token[0].access_token
-          if (o.banned == true) {
-            socket.emit("bannedUser", {
-              reason: o.ban_reason,
-              expiry: o.ban_expiry,
-            })
-            socket.leave(o.room)
-            return {
-              state: false,
+        if (token[0]) {
+          if (token[0].access_expiry > Date.now()) {
+            const res = access_token == token[0].access_token
+            if (o.banned == true) {
+              socket.emit("bannedUser", {
+                reason: o.ban_reason,
+                expiry: o.ban_expiry,
+              })
+              socket.leave(o.room)
+              return {
+                state: false,
+              }
             }
-          }
-          if (res == true) {
-            return {
-              state: true,
-              object: o,
+            if (res == true) {
+              return {
+                state: true,
+                object: o,
+              }
+            } else {
+              return {
+                state: false,
+              }
             }
           } else {
+            const latestEvent = eventList[eventList.length - 1]
+            io.to(socket.id).emit("refresh", {
+              name: latestEvent.event,
+              args: latestEvent.args,
+            })
             return {
               state: false,
             }
-          }
-        } else {
-          const latestEvent = eventList[eventList.length - 1]
-          io.to(socket.id).emit("refresh", {
-            name: latestEvent.event,
-            args: latestEvent.args,
-          })
-          return {
-            state: false,
           }
         }
       } else {
@@ -334,6 +340,7 @@ io.on("connection", (socket) => {
     async ({ username, roomname, access_token, sameTab }) => {
       authUser(username, access_token).then(async (authed) => {
         const permaUsername = username
+
         if (authed.state == true) {
           //* create user
           Room.findOne({ name: roomname }).then((r) => {
@@ -437,7 +444,8 @@ io.on("connection", (socket) => {
                   }
 
                   // moderate message with external server
-                  const res = await fetch(
+                  const res = 200
+                  /*await fetch(
                     "https://mc-filterbot.micahlt.repl.co/api/checkstring",
                     {
                       method: "POST",
@@ -445,139 +453,139 @@ io.on("connection", (socket) => {
                     }
                   ).catch((err) => {
                     console.error("⚠️ " + err);
-                  })
+                  })*/
                   if (res) {
-                    if (res.status == 200) {
-                    switch (content.split(" ")[0]) {
-                      case "/ban":
-                        const base = content.split(" ")
-                        let addOn = 0
-                        for (let i = 0; i < base.length / 2; i++) {
-                          const day = base[i]
-                          const specificTime = base[i + 1]
-                          console.log(specificTime)
-                          if (specificTime == "months") {
-                            addOn += 2629746000 * day
-                          } else if (specificTime == "days") {
-                            addOn += 86400000 * day
-                          } else if (specificTime == "weeks") {
-                            addOn += 604800000 * day
+                    if (res == 200) {
+                      switch (content.split(" ")[0]) {
+                        case "/ban":
+                          const base = content.split(" ")
+                          let addOn = 0
+                          for (let i = 0; i < base.length / 2; i++) {
+                            const day = base[i]
+                            const specificTime = base[i + 1]
+                            console.log(specificTime)
+                            if (specificTime == "months") {
+                              addOn += 2629746000 * day
+                            } else if (specificTime == "days") {
+                              addOn += 86400000 * day
+                            } else if (specificTime == "weeks") {
+                              addOn += 604800000 * day
+                            }
                           }
-                        }
-                        const expiry = Date.now() + addOn
+                          const expiry = Date.now() + addOn
 
-                        function getNumberWithOrdinal(n) {
-                          var s = ["th", "st", "nd", "rd"],
-                            v = n % 100
-                          return n + (s[(v - 20) % 10] || s[v] || s[0])
-                        }
-
-                        const formatAMPM = (date) => {
-                          let hours = date.getHours()
-                          let minutes = date.getMinutes()
-                          let seconds = date.getSeconds()
-                          let ampm = hours >= 12 ? "PM" : "AM"
-                          hours = hours % 12
-                          hours = hours ? hours : 12
-                          minutes = minutes.toString().padStart(2, "0")
-                          let strTime =
-                            hours + ":" + minutes + ":" + seconds + " " + ampm
-                          return strTime
-                        }
-
-                        const list = content
-                          .split(" ")
-                          .slice(3 + base.length / 2)
-                        const reason = list.join(" ")
-                        await User.updateOne(
-                          {
-                            username: content.split(" ")[1],
-                          },
-                          {
-                            $set: {
-                              banned: true,
-                              ban_expiry: expiry,
-                              ban_reason: reason,
-                            },
+                          function getNumberWithOrdinal(n) {
+                            var s = ["th", "st", "nd", "rd"],
+                              v = n % 100
+                            return n + (s[(v - 20) % 10] || s[v] || s[0])
                           }
-                        )
-                        break
-                      case "/unban":
-                        await User.updateOne(
-                          {
-                            username: content.split(" ")[1],
-                          },
-                          {
-                            $set: {
-                              banned: false,
-                            },
+
+                          const formatAMPM = (date) => {
+                            let hours = date.getHours()
+                            let minutes = date.getMinutes()
+                            let seconds = date.getSeconds()
+                            let ampm = hours >= 12 ? "PM" : "AM"
+                            hours = hours % 12
+                            hours = hours ? hours : 12
+                            minutes = minutes.toString().padStart(2, "0")
+                            let strTime =
+                              hours + ":" + minutes + ":" + seconds + " " + ampm
+                            return strTime
                           }
-                        )
-                        break
-                      case "/shrug":
-                        io.to(roomname).emit("message", {
-                          userId: "000000",
-                          username: "Modchat Bot",
-                          profilePicture:
-                            "https://cdn.micahlindley.com/assets/modchat-pfp.png",
-                          type: "text",
-                          content: `**${user.username}** shrugged ¯\_(ツ)_/¯`,
-                          id: cryptoRandomString(34),
-                        })
-                        break
-                      default:
-                        io.to(object.room).emit("message", {
-                          username: user.username,
-                          profilePicture: user.scratch_picture,
-                          type: "text",
-                          content: content,
-                          id: id,
-                        })
-                        await Room.updateOne(
-                          {
-                            message_id: oldID.message_id,
-                          },
-                          {
-                            $set: {
-                              message_id: id,
-                            },
-                          }
-                        )
 
-                        const message = {
-                          username: user.username,
-                          message: content,
-                          profile_picture: user.scratch_picture,
-                          time: 50,
-                          message_id: id,
-                        }
-
-                        await Room.updateOne(
-                          {
-                            name: object.room,
-                          },
-                          { $push: { messages: message } }
-                        )
-
-                        const room = await Room.findOne({
-                          name: object.room,
-                        }).lean()
-
-                        if (room.messages.length > 100) {
-                          await Room.updateOne(
+                          const list = content
+                            .split(" ")
+                            .slice(3 + base.length / 2)
+                          const reason = list.join(" ")
+                          await User.updateOne(
                             {
-                              username: user.username,
+                              username: content.split(" ")[1],
                             },
                             {
-                              $pop: {
-                                messages: -1,
+                              $set: {
+                                banned: true,
+                                ban_expiry: expiry,
+                                ban_reason: reason,
                               },
                             }
                           )
-                        }
-                        break
+                          break
+                        case "/unban":
+                          await User.updateOne(
+                            {
+                              username: content.split(" ")[1],
+                            },
+                            {
+                              $set: {
+                                banned: false,
+                              },
+                            }
+                          )
+                          break
+                        case "/shrug":
+                          io.to(roomname).emit("message", {
+                            userId: "000000",
+                            username: "Modchat Bot",
+                            profilePicture:
+                              "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+                            type: "text",
+                            content: `**${user.username}** shrugged ¯\_(ツ)_/¯`,
+                            id: cryptoRandomString(34),
+                          })
+                          break
+                        default:
+                          io.to(object.room).emit("message", {
+                            username: user.username,
+                            profilePicture: user.scratch_picture,
+                            type: "text",
+                            content: content,
+                            id: id,
+                          })
+                          await Room.updateOne(
+                            {
+                              message_id: oldID.message_id,
+                            },
+                            {
+                              $set: {
+                                message_id: id,
+                              },
+                            }
+                          )
+
+                          const message = {
+                            username: user.username,
+                            message: content,
+                            profile_picture: user.scratch_picture,
+                            time: 50,
+                            message_id: id,
+                          }
+
+                          await Room.updateOne(
+                            {
+                              name: object.room,
+                            },
+                            { $push: { messages: message } }
+                          )
+
+                          const room = await Room.findOne({
+                            name: object.room,
+                          }).lean()
+
+                          if (room.messages.length > 100) {
+                            await Room.updateOne(
+                              {
+                                username: user.username,
+                              },
+                              {
+                                $pop: {
+                                  messages: -1,
+                                },
+                              }
+                            )
+                          }
+                          break
+                      }
                     }
-                  }
                   }
                 }
               }
