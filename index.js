@@ -71,13 +71,29 @@ mongoose.connect(encodeURI(process.env.MONGO_URL))
 // Schemas
 const User = require("./models/user.js")
 const Room = require("./models/room.js")
+const Message = require("./models/message.js")
 
 Room.find().then((r) => {
   if (JSON.stringify(r) == "[]") {
     Room.create({
-      messages: [],
       name: "general",
-      message_id: 0,
+      current_message_id: 0,
+    })
+    Room.create({
+      name: "developers",
+      current_message_id: 0,
+    })
+    Room.create({
+      name: "games",
+      current_message_id: 0,
+    })
+    Room.create({
+      name: "random",
+      current_message_id: 0,
+    })
+    Room.create({
+      name: "help",
+      current_message_id: 0,
     })
   }
 })
@@ -104,6 +120,26 @@ const filterText = require("./filter.js")
 
 app.get("/", (req, res) => {
   res.send(`🏁 modchat-server ${VERSION} is running`)
+})
+
+app.get("/api/messages/:room/:id", (req, res) => {
+  const room = req.params.room
+  const id = req.params.id
+  console.log(room, id)
+  if (id && room) {
+    Message.find({
+      id: id,
+    }).then((msg) => {
+      console.log(msg)
+      if (msg == []) {
+        res.sendStatus(404)
+      } else {
+        res.send(msg[0])
+      }
+    })
+  } else {
+    res.sendStatus(400)
+  }
 })
 
 app.post("/api/soa2code", (req, res) => {
@@ -278,7 +314,7 @@ app.post("/api/refresh", async (req, res) => {
           res.sendStatus(403)
         }
       } else {
-        res.sendStatus(403) // ok wait
+        res.sendStatus(403)
       }
     } else {
       console.log("Improper use of the refresh endpoint.")
@@ -357,16 +393,7 @@ io.on("connection", (socket) => {
         const permaUsername = username
 
         if (authed.state == true) {
-          //* create user
-          Room.findOne({ name: roomname }).then((r) => {
-            if (!r) {
-              Room.create({
-                messages: [],
-                name: roomname,
-                message_id: 0,
-              })
-            }
-          })
+          // create user
           console.log("✅ Authenticated")
 
           const oldUser = authed.object
@@ -376,11 +403,11 @@ io.on("connection", (socket) => {
           console.log(
             `🔗 ${username} connected on socket ${socket.id} in room ${roomname}`
           )
-
+          /*
           const roomStorage = await Room.findOne({
             name: roomname,
           }).lean()
-          if (roomStorage) {
+          if (roomStorage) { 
             roomStorage.messages.forEach((i) => {
               io.to(socket.id).emit("message", {
                 username: i.username,
@@ -392,7 +419,7 @@ io.on("connection", (socket) => {
               })
             })
           }
-
+*/
           //* Broadcast message to everyone except user that he has joined
           io.to(roomname).emit("message", {
             userId: "000000",
@@ -450,7 +477,7 @@ io.on("connection", (socket) => {
                   const oldID = await Room.findOne({
                     name: object.room,
                   })
-                  const id = oldID.message_id + 1
+                  const id = oldID.current_message_id + 1
 
                   const content = safeHTML(object.content)
 
@@ -558,11 +585,11 @@ io.on("connection", (socket) => {
                           })
                           await Room.updateOne(
                             {
-                              message_id: oldID.message_id,
+                              current_message_id: oldID.current_message_id,
                             },
                             {
                               $set: {
-                                message_id: id,
+                                current_message_id: id,
                               },
                             }
                           )
@@ -572,32 +599,11 @@ io.on("connection", (socket) => {
                             message: content,
                             profile_picture: user.scratch_picture,
                             time: 50,
-                            message_id: id,
+                            id: id,
+                            room: roomname,
                           }
 
-                          await Room.updateOne(
-                            {
-                              name: object.room,
-                            },
-                            { $push: { messages: message } }
-                          )
-
-                          const room = await Room.findOne({
-                            name: object.room,
-                          }).lean()
-
-                          if (room.messages.length > 100) {
-                            await Room.updateOne(
-                              {
-                                username: user.username,
-                              },
-                              {
-                                $pop: {
-                                  messages: -1,
-                                },
-                              }
-                            )
-                          }
+                          await Message.create(message)
                           break
                       }
                     } else {
