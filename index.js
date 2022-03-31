@@ -3,6 +3,13 @@ const express = require("express")
 var cookie = require("cookie")
 const helmet = require("helmet")
 
+const privateKey = Buffer.from(process.env.PRIVATE_KEY, "base64").toString(
+  "ascii"
+)
+const publicKey = Buffer.from(process.env.PUBLIC_KEY, "base64").toString(
+  "ascii"
+)
+
 const replaceAll = require("string.prototype.replaceall")
 const safeHTML = (dirty) => {
   if (dirty.includes("‮")) {
@@ -42,7 +49,7 @@ app.use(
     origin: [
       "https://modchat-vue.mcv2.repl.co",
       "https://modchat.micahlindley.com",
-      "https://s.modchat.micahlindley.com"
+      "https://s.modchat.micahlindley.com",
     ],
     credentials: true,
     methods: ["GET", "POST"],
@@ -52,6 +59,12 @@ app.use(helmet())
 app.use(cookieParser())
 
 const mongoose = require("mongoose")
+const jwt = require("jsonwebtoken")
+const jwtOptions = { algorithm: "PS256" }
+const token = jwt.sign({ foo: "bar" }, privateKey, jwtOptions)
+jwt.verify(token, publicKey, function (err, decoded) {
+  console.log(decoded) // bar
+})
 
 mongoose.connect(encodeURI(process.env.MONGO_URL))
 
@@ -75,7 +88,7 @@ const bcrypt = require("bcryptjs")
 
 var server = app.listen(
   port,
-  console.log(`🟢 Server is running on port ${process.env.PORT || 8000}.`)
+  console.log(`🟢 Server is running on port ${port}.`)
 )
 const io = socket(server, {
   pingTimeout: 60000, // tries to fix too many reconnects
@@ -87,6 +100,7 @@ const io = socket(server, {
 })
 
 const { getCurrentUser, userLeave, userJoin, userList } = require("./user.js")
+const filterText = require("./filter.js")
 
 app.get("/", (req, res) => {
   res.send(`🏁 modchat-server ${VERSION} is running`)
@@ -264,7 +278,7 @@ app.post("/api/refresh", async (req, res) => {
           res.sendStatus(403)
         }
       } else {
-        res.sendStatus(403)
+        res.sendStatus(403) // ok wait
       }
     } else {
       console.log("Improper use of the refresh endpoint.")
@@ -445,7 +459,7 @@ io.on("connection", (socket) => {
                   }
 
                   // moderate message with external server
-                  const res = 200
+                  const res = filterText(object.content) ? 200 : 400
                   /*await fetch(
                     "https://mc-filterbot.micahlt.repl.co/api/checkstring",
                     {
@@ -586,6 +600,9 @@ io.on("connection", (socket) => {
                           }
                           break
                       }
+                    } else {
+                      console.log("🗣️ A message was filtered.")
+                      io.to(socket.id).emit("badMessage")
                     }
                   }
                 }
