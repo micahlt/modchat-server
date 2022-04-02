@@ -1,5 +1,13 @@
 const VERSION = "0.8.6"
 const express = require("express")
+const rateLimit = require("express-rate-limit")
+const apiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 60 minutes
+  max: 1, // Limit each IP to 1 requests per `window` (here, per 60 minutes)
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+})
+
 var cookie = require("cookie")
 const helmet = require("helmet")
 
@@ -125,20 +133,63 @@ app.get("/", (req, res) => {
 app.get("/api/messages/:room/:id", (req, res) => {
   const room = req.params.room
   const id = req.params.id
-  console.log(room, id)
   if (id && room) {
     Message.find({
+      room: room,
       id: id,
     }).then((msg) => {
       console.log(msg)
-      if (msg == []) {
-        res.sendStatus(404)
+      if (JSON.stringify(msg) == "[]") {
+        res.status(404).send("Couldn't find anything that matched")
       } else {
-        res.send(msg[0])
+        res.status(200).send(msg[0])
       }
     })
   } else {
     res.sendStatus(400)
+  }
+})
+
+app.get("/api/messages/:room", (req, res) => {
+  const room = req.params.room
+  const first = req.query.first
+  const last = req.query.last
+  if (room && first && last) {
+    Message.find({
+      room: room,
+      id: {
+        $gte: first,
+        $lte: last,
+      },
+    }).then((msg) => {
+      console.log(msg)
+      if (JSON.stringify(msg) == "[]") {
+        res.status(404).send("Couldn't find anything that matched")
+      } else {
+        res.status(200).send(msg)
+      }
+    })
+  } else {
+    res.sendStatus(400)
+  }
+})
+
+app.get("/api/rooms/:room?", (req, res) => {
+  const room = req.params.room
+  if (room) {
+    Room.find({
+      name: room,
+    }).then((rm) => {
+      if (JSON.stringify(rm) == "[]") {
+        res.status(404).send("Couldn't find anything that matched")
+      } else {
+        res.status(200).send(rm[0])
+      }
+    })
+  } else {
+    Room.find().then((rm) => {
+      res.status(200).send(rm)
+    })
   }
 })
 
@@ -581,6 +632,7 @@ io.on("connection", (socket) => {
                             profilePicture: user.scratch_picture,
                             type: "text",
                             content: content,
+                            time: new Date(),
                             id: id,
                           })
                           await Room.updateOne(
@@ -598,7 +650,7 @@ io.on("connection", (socket) => {
                             username: user.username,
                             message: content,
                             profile_picture: user.scratch_picture,
-                            time: 50,
+                            time: new Date(),
                             id: id,
                             room: roomname,
                           }
