@@ -68,11 +68,6 @@ app.use(cookieParser())
 
 const mongoose = require("mongoose")
 const jwt = require("jsonwebtoken")
-const jwtOptions = { algorithm: "PS256" }
-const token = jwt.sign({ foo: "bar" }, privateKey, jwtOptions)
-jwt.verify(token, publicKey, function (err, decoded) {
-  console.log(decoded) // bar
-})
 
 mongoose.connect(encodeURI(process.env.MONGO_URL))
 
@@ -133,14 +128,13 @@ app.get("/", (req, res) => {
 app.get("/api/messages/:room/:id", (req, res) => {
   const room = req.params.room
   const id = req.params.id
-  if (id && room) {
+  if (String(room) && Number(id)) {
     Message.find({
       room: room,
       id: id,
     }).then((msg) => {
-      console.log(msg)
       if (JSON.stringify(msg) == "[]") {
-        res.status(404).send("Couldn't find anything that matched")
+        res.status(404).send("Couldn't find anything that matched.")
       } else {
         res.status(200).send(msg[0])
       }
@@ -161,14 +155,15 @@ app.get("/api/messages/:room", (req, res) => {
         $gte: first,
         $lte: last,
       },
-    }).then((msg) => {
-      console.log(msg)
-      if (JSON.stringify(msg) == "[]") {
-        res.status(404).send("Couldn't find anything that matched")
-      } else {
-        res.status(200).send(msg)
-      }
     })
+      .sort({ id: "asc" })
+      .then((msg) => {
+        if (JSON.stringify(msg) == "[]") {
+          res.status(204).send(msg)
+        } else {
+          res.status(200).send(msg)
+        }
+      })
   } else {
     res.sendStatus(400)
   }
@@ -181,7 +176,7 @@ app.get("/api/rooms/:room?", (req, res) => {
       name: room,
     }).then((rm) => {
       if (JSON.stringify(rm) == "[]") {
-        res.status(404).send("Couldn't find anything that matched")
+        res.status(204).send(rm)
       } else {
         res.status(200).send(rm[0])
       }
@@ -284,6 +279,22 @@ app.post("/api/login", async (req, res) => {
         return
       }
     }
+    let secret = cryptoRandomString(65)
+    if (!user.secret) {
+      await User.updateOne(
+        {
+          username,
+        },
+        {
+          $set: {
+            secret: secret,
+          },
+        }
+      )
+    } else {
+      secret = user.secret
+    }
+
     if (await bcrypt.compare(password, user.password)) {
       console.log(`✅ Correct username and password`)
       const access_token = cryptoRandomString(65)
@@ -304,12 +315,21 @@ app.post("/api/login", async (req, res) => {
         },
         { upsert: true, setDefaultsOnInsert: true }
       )
-      res.cookie("refresh_token", refresh_token, {
-        secure: true,
-        httpOnly: true,
-        maxAge: 60 * 60 * 24 * 100 * 1000,
-        sameSite: "strict",
-      })
+
+      res.cookie(
+        "refresh_token",
+        jwt.sign(
+          { username: username, id: refresh_token, secret: secret },
+          privateKey,
+          { algorithm: "PS256", expiresIn: "100d" }
+        ),
+        {
+          secure: true,
+          httpOnly: true,
+          maxAge: 60 * 60 * 24 * 100 * 1000,
+          sameSite: "strict",
+        }
+      )
       res.send({
         access_token,
       })
@@ -326,50 +346,117 @@ app.post("/api/refresh", async (req, res) => {
   if (req.cookies["refresh_token"] && req.body.username) {
     const user = await User.findOne({ username: req.body.username })
     if (user) {
-      const tokenArray = user.tokens
-      const token = tokenArray.filter(
-        (tokenArray) =>
-          tokenArray.refresh_token === req.cookies["refresh_token"]
+      jwt.verify(
+        req.cookies["refresh_token"],
+        publicKey,
+        function (err, decoded) {
+          console.log(err)
+          jwtRefresh = decoded
+        }
       )
+      const tokenArray = user.tokens
+      if (jwtRefresh) {
+        const token = tokenArray.filter(
+          (tokenArray) => tokenArray.refresh_token === jwtRefresh.id
+        )
+        if (!tokenArray == []) {
+          if (user.secret === jwtRefresh.secret) {
+            if (token[0]) {
+              if (Date.now() < token[0].refresh_expiry) {
+                const access_token = cryptoRandomString(65)
+                const refresh_token = cryptoRandomString(65)
+                if (Date.now() < token[0].access_expiry) {
+                  res.cookie(
+                    "refresh_token",
+                    jwt.sign(
+                      {
+                        username: req.body.username,
+                        id: token[0].refresh_token,
+                        secret: user.secret,
+                      },
+                      privateKey,
+                      { algorithm: "PS256", expiresIn: token[0].refresh_expiry }
+                    ),
+                    {
+                      secure: true,
+                      httpOnly: true,
+                      maxAge: token[0].refresh_expiry,
+                      sameSite: "strict",
+                    }
+                  )
+                  const oldAT = token[0].access_token
+                  res.send({
+                    access_token: oldAT,
+                  })
+                } else {
+                  const currentDate = Date.now()
+                  const oldRefreshTokenArray = tokenArray.filter(
+                    (rt) => rt.refresh_token !== jwtRefresh.id
+                  )
+                  const refreshTokenArray = oldRefreshTokenArray.filter(
+                    (old_rt) => old_rt.refresh_expiry > currentDate
+                  )
 
-      if (token[0]) {
-        if (Date.now() < token[0].refresh_expiry) {
-          const access_token = cryptoRandomString(65)
-          const refresh_token = cryptoRandomString(65)
-          await User.updateOne(
-            {
-              username: req.body.username,
-            },
-            {
-              $push: {
-                tokens: {
-                  access_token: access_token,
-                  refresh_token: refresh_token,
-                  access_expiry: Date.now() + 8300000, // 8300000
-                  refresh_expiry: Date.now() + 86400000, // 86400000
-                },
-              },
+                  const newTokens = {
+                    access_token: access_token,
+                    refresh_token: refresh_token,
+                    access_expiry: Date.now() + 8300000,
+                    refresh_expiry: Date.now() + 8640000000,
+                  }
+                  user.tokens = [...refreshTokenArray, newTokens]
+                  user.save()
+                  res.cookie(
+                    "refresh_token",
+                    jwt.sign(
+                      {
+                        username: req.body.username,
+                        id: refresh_token,
+                        secret: user.secret,
+                      },
+                      privateKey,
+                      {
+                        algorithm: "PS256",
+                        expiresIn: "100d",
+                      }
+                    ),
+                    {
+                      secure: true,
+                      httpOnly: true,
+                      maxAge: 60 * 60 * 24 * 100 * 1000,
+                      sameSite: "strict",
+                    }
+                  )
+                  res.send({
+                    access_token,
+                  })
+                }
+              } else {
+                console.log("⚠️ Refresh token expired")
+                res.sendStatus(403)
+              }
+            } else {
+              console.warn(
+                `CRITICAL: Refresh Token Theft Detection has been detected for user ${jwtRefresh.username}.`
+              )
+              user.tokens = []
+              user.secret = cryptoRandomString(65)
+              user.save()
+              res.sendStatus(403)
             }
-          )
-          res.cookie("refresh_token", refresh_token, {
-            secure: true,
-            httpOnly: true,
-            maxAge: 60 * 60 * 24 * 100 * 1000,
-            sameSite: "strict",
-          })
-          res.send({
-            access_token,
-          })
+          } else {
+            console.warn(
+              "Someone either has the signing key or has previously stolen this JWT, not a huge threat"
+            )
+            res.sendStatus(403)
+          }
         } else {
-          console.log("⚠️ Refresh token expired")
+          console.warn("This user does not have any tokens.")
           res.sendStatus(403)
         }
       } else {
-        res.sendStatus(403)
+        console.log("Improper use of the refresh endpoint.")
+        res.sendStatus(301)
       }
-    } else {
-      console.log("Improper use of the refresh endpoint.")
-      res.sendStatus(301)
     }
   }
 })
@@ -421,6 +508,10 @@ io.on("connection", (socket) => {
               state: false,
             }
           }
+        } else {
+          return {
+            state: false,
+          }
         }
       } else {
         return {
@@ -454,23 +545,6 @@ io.on("connection", (socket) => {
           console.log(
             `🔗 ${username} connected on socket ${socket.id} in room ${roomname}`
           )
-          /*
-          const roomStorage = await Room.findOne({
-            name: roomname,
-          }).lean()
-          if (roomStorage) { 
-            roomStorage.messages.forEach((i) => {
-              io.to(socket.id).emit("message", {
-                username: i.username,
-                profilePicture: i.profile_picture,
-                type: "text",
-                content: i.message,
-                id: i.message_id,
-                old: true,
-              })
-            })
-          }
-*/
           //* Broadcast message to everyone except user that he has joined
           io.to(roomname).emit("message", {
             userId: "000000",
@@ -480,20 +554,33 @@ io.on("connection", (socket) => {
             type: "text",
             content: safeHTML(`🎉 @${username} has joined the chat 🎉`),
             id: cryptoRandomString(34),
+            time: new Date(),
           })
 
           app.post("/api/logout", async (req, res) => {
             if (req.body.username && req.cookies["refresh_token"]) {
-              await User.updateOne(
-                { username: req.body.username },
-                {
-                  $pull: {
-                    tokens: {
-                      refresh_token: req.cookies["refresh_token"],
-                    },
-                  },
+              jwt.verify(
+                req.cookies["refresh_token"],
+                publicKey,
+                function (err, decoded) {
+                  console.log(err)
+                  jwtRefresh = decoded
                 }
               )
+              if (jwtRefresh) {
+                await User.updateOne(
+                  { username: req.body.username },
+                  {
+                    $pull: {
+                      tokens: {
+                        refresh_token: jwtRefresh.id,
+                      },
+                    },
+                  }
+                )
+              } else {
+                console.warn("🔐 Missing token.")
+              }
               res.sendStatus(200)
             } else {
               console.warn("🔐 Missing username or token.")
@@ -679,6 +766,7 @@ io.on("connection", (socket) => {
               type: "text",
               content: safeHTML(`😥 @${socket.username} left the chat 😥`),
               id: cryptoRandomString(34),
+              time: new Date(),
             })
             userLeave(socket.username)
           })

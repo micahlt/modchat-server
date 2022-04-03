@@ -9,6 +9,7 @@ const UserSchema = new mongoose.Schema({
   banned: { type: Boolean },
   ban_reason: { type: String },
   ban_expiry: { type: Number },
+  secret: { type: String },
   tokens: [
     {
       access_token: { type: String },
