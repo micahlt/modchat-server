@@ -10,6 +10,7 @@ const UserSchema = new mongoose.Schema({
   ban_reason: { type: String },
   ban_expiry: { type: Number },
   secret: { type: String },
+  mutedFor: { type: Number },
   tokens: [
     {
       access_token: { type: String },

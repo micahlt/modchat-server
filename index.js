@@ -188,6 +188,236 @@ app.get("/api/rooms/:room?", (req, res) => {
   }
 })
 
+app.get("/api/session/isBanned/:username", (req, res) => {
+  const username = req.params.username
+  if (username && String(username)) {
+    User.find({
+      username: username,
+    }).then((rm) => {
+      res.status(200).send({banned: rm[0].banned, expiry: rm[0].ban_expiry, reason: rm[0].ban_reason})
+    })
+  } else {
+    res.sendStatus(400)
+  }
+})
+
+app.post("/api/messages/delete/", async (req, res) => {
+  const room = req.body.room
+  const id = req.body.id
+  const username = req.body.username
+  const access_token = req.body.access_token
+  if (username && room && id && access_token) {
+    if (
+      String(room) &&
+      Number(id) &&
+      String(access_token) &&
+      String(username)
+    ) {
+      const user = await User.findOne({
+        username: username,
+      })
+      const tokenArray = user.tokens
+      const token = tokenArray.filter(
+        (tokenArray) => tokenArray.access_token === access_token
+      )
+      if (token[0] && Date.now() < token[0].access_expiry && user.banned !== 'true') {
+        if (user.role == "moderator") {
+          await Message.deleteOne({
+            room: room,
+            id: id,
+          })
+          res.sendStatus(200)
+        } else {
+          res.sendStatus(401)
+        }
+      } else {
+        res.sendStatus(401)
+      }
+    } else {
+      res.sendStatus(400)
+    }
+  } else {
+    res.sendStatus(400)
+  }
+})
+
+app.post("/api/session/revoke", async (req, res) => {
+  const username = req.body.username
+  const mod = req.body.myUsername
+  const access_token = req.body.access_token
+  if (username && access_token && mod && String(username) && String(access_token) && String(mod)) {
+    const user = await User.findOne({
+      username: mod,
+    })
+    const tokenArray = user.tokens
+    const token = tokenArray.filter(
+      (tokenArray) => tokenArray.access_token === access_token
+    )
+    if (token[0] && Date.now() < token[0].access_expiry && user.banned !== 'true') {
+      if (user.role == "moderator") {
+        user.tokens = []
+        user.save()
+        res.sendStatus(200)
+      } else {
+        res.sendStatus(401)
+      }
+    } else {
+      res.sendStatus(401)
+    }
+  } else {
+    res.sendStatus(400)
+  }
+})
+
+app.post("/api/session/ban", async (req, res) => {
+  const username = req.body.username
+  const mod = req.body.myUsername
+  const access_token = req.body.access_token
+  const reason = req.body.reason
+  const timestamp = req.body.time
+  if (username && access_token && reason && timestamp && mod && String(username) && String(access_token) && String(reason) && Number(timestamp) && String(mod)) {
+    const user = await User.findOne({
+      username: mod,
+    })
+    const tokenArray = user.tokens
+    const token = tokenArray.filter(
+      (tokenArray) => tokenArray.access_token === access_token
+    )
+    if (token[0] && Date.now() < token[0].access_expiry && user.banned !== 'true') {
+      if (user.role == "moderator") {
+        await User.updateOne(
+          {
+            username,
+          },
+          {
+            $set: {
+              banned: true,
+              ban_reason: reason,
+              ban_expiry: timestamp
+            },
+          }
+        )
+        res.sendStatus(200)
+      } else {
+        res.sendStatus(401)
+      }
+    } else {
+      res.sendStatus(401)
+    }
+  } else {
+    res.sendStatus(400)
+  }
+})
+
+app.post("/api/session/unban", async (req, res) => {
+  const username = req.body.username
+  const access_token = req.body.access_token
+  const mod = req.body.myUsername
+  if (username && access_token && mod && String(username) && String(access_token) && String(mod)) {
+    const user = await User.findOne({
+      username: mod,
+    })
+    const tokenArray = user.tokens
+    const token = tokenArray.filter(
+      (tokenArray) => tokenArray.access_token === access_token
+    )
+    if (token[0] && Date.now() < token[0].access_expiry && user.banned !== 'true') {
+      if (user.role == "moderator") {
+        await User.updateOne(
+          {
+            username,
+          },
+          {
+            $set: {
+              banned: false,
+            },
+          }
+        )
+        res.sendStatus(200)
+      } else {
+        res.sendStatus(401)
+      }
+    } else {
+      res.sendStatus(401)
+    }
+  } else {
+    res.sendStatus(400)
+  }
+})
+
+app.post("/api/session/mute", async (req, res) => {
+  const username = req.body.username
+  const access_token = req.body.access_token
+  const mod = req.body.myUsername
+  const time = req.body.timeStamp
+  if (username && access_token && mod && time && String(username) && String(access_token) && String(mod) && Number(time)) {
+    const user = await User.findOne({
+      username: mod,
+    })
+    const tokenArray = user.tokens
+    const token = tokenArray.filter(
+      (tokenArray) => tokenArray.access_token === access_token
+    )
+    if (token[0] && Date.now() < token[0].access_expiry && user.banned !== 'true') {
+      if (user.role == "moderator") {
+        await User.updateOne(
+          {
+            username,
+          },
+          {
+            $set: {
+              mutedFor: time,
+            },
+          }
+        )
+        res.sendStatus(200)
+      } else {
+        res.sendStatus(401)
+      }
+    } else {
+      res.sendStatus(401)
+    }
+  } else {
+    res.sendStatus(400)
+  }
+})
+
+app.post("/api/session/unmute", async (req, res) => {
+  const username = req.body.username
+  const access_token = req.body.access_token
+  const mod = req.body.myUsername
+  if (username && access_token && mod && String(username) && String(access_token) && String(mod)) {
+    const user = await User.findOne({
+      username: mod,
+    })
+    const tokenArray = user.tokens
+    const token = tokenArray.filter(
+      (tokenArray) => tokenArray.access_token === access_token
+    )
+    if (token[0] && Date.now() < token[0].access_expiry && user.banned !== 'true') {
+      if (user.role == "moderator") {
+        await User.updateOne(
+          {
+            username,
+          },
+          {
+            $set: {
+              mutedFor: 0,
+            },
+          }
+        )
+        res.sendStatus(200)
+      } else {
+        res.sendStatus(401)
+      }
+    } else {
+      res.sendStatus(401)
+    }
+  } else {
+    res.sendStatus(400)
+  }
+})
+
 app.post("/api/soa2code", (req, res) => {
   if (req.body.code && req.body.state) {
     fetch("https://oauth2.scratch-wiki.info/w/rest.php/soa2/v0/tokens", {
@@ -263,7 +493,7 @@ app.post("/api/login", async (req, res) => {
       res.status(400).send({ reason: "notSignedUp" })
       return
     }
-    if (user.ban_expiry) {
+    if (user.banned == true && user.ban_expiry) {
       if (Date.now() > user.ban_expiry) {
         await User.updateOne(
           {
@@ -445,7 +675,7 @@ app.post("/api/refresh", async (req, res) => {
             }
           } else {
             console.warn(
-              "Someone either has the signing key or has previously stolen this JWT, not a huge threat"
+              `Someone either has the signing key or has previously stolen this JWT for user ${jwtRefresh.username}, not a huge threat`
             )
             res.sendStatus(403)
           }
