@@ -16,7 +16,7 @@ let addWords = [
 addWords.push.apply(addWords, frenchBadwords.array) // Add French curse words to the filter
 addWords.push.apply(addWords, moreBadwords) // Add other curse words to the filter
 const filter = new Filter({
-  list: addWords
+  list: addWords,
 })
 const test = (string) => {
   if (filter.isUnclean(string.replace(String.fromCharCode(8203), "")) == true) {
