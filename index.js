@@ -273,6 +273,27 @@ app.get("/api/session/isBanned/:username", (req, res) => {
   }
 })
 
+app.get("/api/session/isMod/:username", (req, res) => {
+  const username = req.params.username
+  if (username && String(username)) {
+    User.find({
+      username: username,
+    }).then((rm) => {
+      if (JSON.stringify(rm) == "[]") {
+        res.sendStatus(400)
+      } else {
+        let isMod = false
+        if (rm[0].role && rm[0].role == "moderator") {
+          isMod = true
+        }
+        res.status(200).send(isMod)
+      }
+    })
+  } else {
+    res.sendStatus(400)
+  }
+})
+
 app.post("/api/messages/report", async (req, res) => {
   const room = req.body.room
   const id = req.body.id
@@ -1050,7 +1071,7 @@ io.on("connection", (socket) => {
                       content:
                         "You are muted. You may talk again in " +
                         Math.ceil((slowmo[user.username] - Date.now()) / 1000) +
-                      " seconds.",
+                        " seconds.",
                       time: new Date(),
                       id: cryptoRandomString(34),
                     })
