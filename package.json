@@ -32,7 +32,9 @@
     "prettier": "^2.6.1",
     "scratchlib": "^0.4.0",
     "socket.io": "^4.4.1",
-    "string.prototype.replaceall": "^1.0.6"
+    "string.prototype.replaceall": "^1.0.6",
+    "varint": "^6.0.0",
+    "varstruct": "^6.1.3"
   },
   "devDependencies": {
     "nodemon": "^2.0.15"

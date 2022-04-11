@@ -54,6 +54,50 @@ function reverseString(str) {
   return str.split("").reverse().join("")
 }
 
+let b64tbl = { "-": "+", _: "/", "/": "_", "+": "-", "=": "", ".": "" }
+let decb64 = (b) => b.replace(/[-_.]/g, (m) => b64tbl[m])
+let encb64 = (b) => b.replace(/[+/=]/g, (m) => b64tbl[m])
+
+let vs = require("varstruct")
+let vi = require("varint")
+
+let minf = vs([
+  ["q", vs.Byte],
+  ["t", vs.Byte],
+  ["e", vs.VarArray(vi, vi)],
+  ["i", vs.VarArray(vi, vi)],
+])
+
+function genMuteInfo(u, t, st, ...ext) {
+  let d = []
+  let ls = 0
+  sm[u].forEach((e) => {
+    if (d.length === 0) {
+      d.push(0)
+    } else {
+      d.push(Math.floor((e - ls) / 50))
+    }
+    ls = e
+  })
+  let extended = []
+  if (st === 0) {
+    let sm = slowmoRules[ext[0]]
+    extended.push(sm[0] / 50, sm[3], sm[1], sm[2] / 2000)
+  }
+  return encb64(minf.encode({ t, i: d, e: extended, q: st }).toString("base64"))
+}
+
+let slowmoRules = [
+  [50, 3, 60000, 2],
+  [1000, 10, 60000, 5],
+  [5000, 40, 30000, 20],
+  [30000, 50, 40000, 40],
+  [5000, 8, 30000, 6],
+  [1000, 4, 30000, 3],
+]
+let sm = {}
+let slowmo = {}
+
 const cryptoRandomString = require("crypto-random-string")
 const cookieParser = require("cookie-parser")
 
@@ -217,13 +261,11 @@ app.get("/api/session/isBanned/:username", (req, res) => {
       if (JSON.stringify(rm) == "[]") {
         res.sendStatus(400)
       } else {
-        res
-          .status(200)
-          .send({
-            banned: rm[0].banned,
-            expiry: rm[0].ban_expiry,
-            reason: rm[0].ban_reason,
-          })
+        res.status(200).send({
+          banned: rm[0].banned,
+          expiry: rm[0].ban_expiry,
+          reason: rm[0].ban_reason,
+        })
       }
     })
   } else {
@@ -523,7 +565,7 @@ app.post("/api/session/mute", async (req, res) => {
             },
             {
               $set: {
-                mutedFor: time,
+                mutedFor: new Date(Date.now() + time),
               },
             }
           )
@@ -982,6 +1024,89 @@ io.on("connection", (socket) => {
                     return
                   }
                   const user = authed.object
+                  if (user.mutedFor && Date.now() < user.mutedFor) {
+                    io.to(socket.id).emit("message", {
+                      userId: "000000",
+                      username: "Modchat Bot",
+                      profilePicture:
+                        "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+                      type: "text",
+                      content: `You are muted until ${user.mutedFor.toString()} If you'd like to appeal, then contact a moderator.`,
+                      time: new Date(),
+                      id: cryptoRandomString(34),
+                    })
+                    return
+                  }
+                  if (
+                    slowmo[user.username] &&
+                    slowmo[user.username] > Date.now()
+                  ) {
+                    io.to(socket.id).emit("message", {
+                      userId: "000000",
+                      username: "Modchat Bot",
+                      profilePicture:
+                        "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+                      type: "text",
+                      content:
+                        "You are muted. You may talk again in " +
+                        Math.ceil((slowmo[user.username] - Date.now()) / 1000) +
+                      " seconds.",
+                      time: new Date(),
+                      id: cryptoRandomString(34),
+                    })
+                    return
+                  }
+                  if (!sm[user.username]) {
+                    sm[user.username] = []
+                  }
+                  sm[user.username].push(Date.now())
+                  sm[user.username] = sm[user.username].filter(
+                    (x) => x > Date.now() - 60000
+                  )
+                  let trig = false
+                  let muteInfo
+                  let trigWarn = false
+                  slowmoRules.forEach((x, i) => {
+                    let fl = sm[user.username].filter(
+                      (y) => y > Date.now() - x[0]
+                    ).length
+                    if (fl >= x[1]) {
+                      trig = x[2]
+                      muteInfo = genMuteInfo(user.username, 0, 0, i)
+                    }
+
+                    if (fl >= x[3] && (fl === x[3] || fl % 5 === 0)) {
+                      trigWarn = genMuteInfo(user.username, 1, 0, i)
+                    }
+                  })
+                  if (trig) {
+                    io.to(socket.id).emit("message", {
+                      userId: "000000",
+                      username: "Modchat Bot",
+                      profilePicture:
+                        "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+                      type: "text",
+                      content: `You are muted for ${
+                        trig / 1000
+                      } seconds. This is because of spamming, this is a cooldown.`,
+                      time: new Date(),
+                      id: cryptoRandomString(34),
+                    })
+                    slowmo[user.username] = Date.now() + trig
+                    return
+                  }
+                  if (trigWarn) {
+                    io.to(socket.id).emit("message", {
+                      userId: "000000",
+                      username: "Modchat Bot",
+                      profilePicture:
+                        "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+                      type: "text",
+                      content: `Please stop sending messages as fast as you are! Slow down please.`,
+                      time: new Date(),
+                      id: cryptoRandomString(34),
+                    })
+                  }
                   const oldID = await Room.findOne({
                     name: object.room,
                   })
