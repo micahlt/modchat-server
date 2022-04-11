@@ -1172,6 +1172,7 @@ io.on("connection", (socket) => {
                               content: content,
                               time: new Date(),
                               id: id,
+                              reply_id: object.reply_id
                             })
                             await Room.updateOne(
                               {
