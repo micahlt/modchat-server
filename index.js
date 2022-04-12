@@ -1044,6 +1044,19 @@ io.on("connection", (socket) => {
                     )
                     return
                   }
+                  if(safeHTML(object.content).length > 500) {
+                    io.to(socket.id).emit("message", {
+                      userId: "000000",
+                      username: "Modchat Bot",
+                      profilePicture:
+                        "https://cdn.micahlindley.com/assets/modchat-pfp.png",
+                      type: "text",
+                      content: `You are ${safeHTML(object.content).length-500} characters over the character limit. The character limit is 500 characters`,
+                      time: new Date(),
+                      id: cryptoRandomString(34),
+                    })
+                    return
+                  }
                   const user = authed.object
                   if (user.mutedFor && Date.now() < user.mutedFor) {
                     io.to(socket.id).emit("message", {
@@ -1134,7 +1147,7 @@ io.on("connection", (socket) => {
                   if (oldID) {
                     const id = oldID.current_message_id + 1
                     const content = safeHTML(object.content)
-
+                    
                     if (!content) {
                       return
                     }
@@ -1192,6 +1205,7 @@ io.on("connection", (socket) => {
                               time: new Date(),
                               id: id,
                               room: roomname,
+                              reply_id: object.reply_id
                             }
 
                             await Message.create(message)
