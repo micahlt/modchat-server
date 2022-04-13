@@ -235,6 +235,24 @@ app.get("/api/reported", (req, res) => {
   })
 })
 
+
+/*app.get("/api/banned", (req, res) => {
+  User.find({
+    ban_expiry: $gt: Date.now(),
+  }).then((msg) => {
+    res.send(msg)
+  })
+})
+
+app.get("/api/muted", (req, res) => {
+  User.find({
+    mutedFor: $gt: Date.now(),
+  }).then((msg) => {
+    res.send(msg)
+  })
+})*/
+
+
 app.get("/api/rooms/:room?", (req, res) => {
   const room = req.params.room
   if (room) {
@@ -1057,6 +1075,9 @@ io.on("connection", (socket) => {
                     })
                     return
                   }
+                  if (!safeHTML(object.content)) {
+                    return
+                  }
                   const user = authed.object
                   if (user.mutedFor && Date.now() < user.mutedFor) {
                     io.to(socket.id).emit("message", {
@@ -1147,10 +1168,6 @@ io.on("connection", (socket) => {
                   if (oldID) {
                     const id = oldID.current_message_id + 1
                     const content = safeHTML(object.content)
-                    
-                    if (!content) {
-                      return
-                    }
 
                     // moderate message with external server
                     const res = filterText(object.content) ? 400 : 200
