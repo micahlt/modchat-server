@@ -236,9 +236,9 @@ app.get("/api/reported", (req, res) => {
 })
 
 
-/*app.get("/api/banned", (req, res) => {
+app.get("/api/banned", (req, res) => {
   User.find({
-    ban_expiry: $gt: Date.now(),
+    ban_expiry: {$gte: Date.now()},
   }).then((msg) => {
     res.send(msg)
   })
@@ -246,11 +246,11 @@ app.get("/api/reported", (req, res) => {
 
 app.get("/api/muted", (req, res) => {
   User.find({
-    mutedFor: $gt: Date.now(),
+    mutedFor: {$gte: Date.now()},
   }).then((msg) => {
     res.send(msg)
   })
-})*/
+})
 
 
 app.get("/api/rooms/:room?", (req, res) => {
@@ -770,6 +770,7 @@ app.post("/api/login", async (req, res) => {
           httpOnly: true,
           maxAge: 60 * 60 * 24 * 100 * 1000,
           sameSite: "strict",
+          domain: "micahlindley.com"
         }
       )
       res.send({
@@ -824,6 +825,7 @@ app.post("/api/refresh", async (req, res) => {
                       httpOnly: true,
                       maxAge: token[0].refresh_expiry,
                       sameSite: "strict",
+                      domain: "micahlindley.com"
                     }
                   )
                   const oldAT = token[0].access_token
@@ -866,6 +868,7 @@ app.post("/api/refresh", async (req, res) => {
                       httpOnly: true,
                       maxAge: 60 * 60 * 24 * 100 * 1000,
                       sameSite: "strict",
+                      domain: "micahlindley.com"
                     }
                   )
                   res.send({
