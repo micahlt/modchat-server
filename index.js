@@ -235,10 +235,9 @@ app.get("/api/reported", (req, res) => {
   })
 })
 
-
 app.get("/api/banned", (req, res) => {
   User.find({
-    ban_expiry: {$gte: Date.now()},
+    ban_expiry: { $gte: Date.now() },
   }).then((msg) => {
     res.send(msg)
   })
@@ -246,12 +245,11 @@ app.get("/api/banned", (req, res) => {
 
 app.get("/api/muted", (req, res) => {
   User.find({
-    mutedFor: {$gte: Date.now()},
+    mutedFor: { $gte: Date.now() },
   }).then((msg) => {
     res.send(msg)
   })
 })
-
 
 app.get("/api/rooms/:room?", (req, res) => {
   const room = req.params.room
@@ -654,16 +652,17 @@ app.post("/api/soa2code", (req, res) => {
               if (newResJson && newResJson.user_id) {
                 newResJson.session = cryptoRandomString(46)
                 console.log("💾 Adding user to mongoose")
-                const user = User.findOne({ username: newResJson.user_name })
-                if (user) {
-                  console.log("User already exists")
-                } else {
-                  User.create({
-                    username: newResJson.user_name,
-                    role: "user",
-                  })
-                }
-                res.json(newResJson)
+                User.findOne({ username: newResJson.user_name }).then((user) => {
+                  if (user) {
+                    console.log("User already exists")
+                  } else {
+                      User.create({
+                      username: newResJson.user_name,
+                      role: "user",
+                    })
+                  }
+                  res.json(newResJson)
+                })
               }
             })
         }
@@ -770,7 +769,7 @@ app.post("/api/login", async (req, res) => {
           httpOnly: true,
           maxAge: 60 * 60 * 24 * 100 * 1000,
           sameSite: "strict",
-          domain: "micahlindley.com"
+          domain: "micahlindley.com",
         }
       )
       res.send({
@@ -825,7 +824,7 @@ app.post("/api/refresh", async (req, res) => {
                       httpOnly: true,
                       maxAge: token[0].refresh_expiry,
                       sameSite: "strict",
-                      domain: "micahlindley.com"
+                      domain: "micahlindley.com",
                     }
                   )
                   const oldAT = token[0].access_token
@@ -868,7 +867,7 @@ app.post("/api/refresh", async (req, res) => {
                       httpOnly: true,
                       maxAge: 60 * 60 * 24 * 100 * 1000,
                       sameSite: "strict",
-                      domain: "micahlindley.com"
+                      domain: "micahlindley.com",
                     }
                   )
                   res.send({
@@ -1065,14 +1064,16 @@ io.on("connection", (socket) => {
                     )
                     return
                   }
-                  if(safeHTML(object.content).length > 500) {
+                  if (safeHTML(object.content).length > 500) {
                     io.to(socket.id).emit("message", {
                       userId: "000000",
                       username: "Modchat Bot",
                       profilePicture:
                         "https://cdn.micahlindley.com/assets/modchat-pfp.png",
                       type: "text",
-                      content: `You are ${safeHTML(object.content).length-500} characters over the character limit. The character limit is 500 characters`,
+                      content: `You are ${
+                        safeHTML(object.content).length - 500
+                      } characters over the character limit. The character limit is 500 characters`,
                       time: new Date(),
                       id: cryptoRandomString(34),
                     })
@@ -1205,7 +1206,7 @@ io.on("connection", (socket) => {
                               content: content,
                               time: new Date(),
                               id: id,
-                              reply_id: object.reply_id
+                              reply_id: object.reply_id,
                             })
                             await Room.updateOne(
                               {
@@ -1225,7 +1226,7 @@ io.on("connection", (socket) => {
                               time: new Date(),
                               id: id,
                               room: roomname,
-                              reply_id: object.reply_id
+                              reply_id: object.reply_id,
                             }
 
                             await Message.create(message)
