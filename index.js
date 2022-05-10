@@ -59,7 +59,7 @@ const allowedOrigins = [
   "https://modchat-vue.mcv2.repl.co",
   "https://modchat.micahlindley.com",
   "https://s.modchat.micahlindley.com",
-  "https://panel.modchat.micahlindley.com/"
+  "https://panel.modchat.micahlindley.com",
 ]
 
 function credentials(req, res, next) {
@@ -76,7 +76,6 @@ function errorHandler(err, req, res, next) {
 }
 
 async function verifyAccessToken(req, res, next) {
-  console.log(req)
   const accessToken = req.body.access_token
   if (!accessToken) return res.sendStatus(401)
   console.log(accessToken)
@@ -329,13 +328,20 @@ app.get("/api/messages/:room", (req, res) => {
   }
 })
 
-app.get("/api/reported", (req, res) => {
-  Message.find({
-    reported: true,
-  }).then((msg) => {
-    res.send(msg)
-  })
-})
+app.post(
+  "/api/reported",
+  verifyAccessToken,
+  verifyRoles("moderator"),
+  (req, res) => {
+    Message.find({
+      reported: true,
+    })
+      .sort({ id: "desc" })
+      .then((msg) => {
+        res.send(msg)
+      })
+  }
+)
 
 app.get("/api/banned", (req, res) => {
   User.find({
@@ -421,6 +427,7 @@ app.post("/api/messages/report", verifyAccessToken, async (req, res) => {
       const user = req.user
       if (user) {
         if (user.banned !== true) {
+          if (type === false) verifyRoles("moderator")
           await Message.update(
             {
               room: room,
@@ -452,7 +459,7 @@ app.post(
   async (req, res) => {
     const room = req.body.room
     const id = req.body.id
-    if (username && room && id) {
+    if (room && id) {
       if (String(room) && Number(id)) {
         const user = req.user
         if (user) {
@@ -508,7 +515,7 @@ app.post(
   async (req, res) => {
     const username = req.body.username
     const reason = req.body.reason
-    const timestamp = req.body.time
+    const timestamp = req.body.timestamp
     if (
       username &&
       reason &&
@@ -585,12 +592,7 @@ app.post(
   async (req, res) => {
     const username = req.body.username
     const time = req.body.timeStamp
-    if (
-      username &&
-      time &&
-      String(username) &&
-      Number(time)
-    ) {
+    if (username && time && String(username) && Number(time)) {
       const user = req.user
       if (user) {
         if (user.banned !== true) {
