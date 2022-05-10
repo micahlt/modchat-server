@@ -1,14 +1,52 @@
+"use strict"
+
 const VERSION = "0.8.6"
+
 const express = require("express")
-const rateLimit = require("express-rate-limit")
+
+const app = express()
+const PORT = process.env.PORT || 8001
+
+const mongoUrl = process.env.MONGO_URL
+const mongoose = require("mongoose")
+
+const User = require("./models/user.js")
+const Room = require("./models/room.js")
+const Message = require("./models/message.js")
+
+const cors = require("cors")
+const cookieParser = require("cookie-parser")
+
+const base64 = require("base-64")
+const socket = require("socket.io")
+
+const bcrypt = require("bcryptjs")
+const jwt = require("jsonwebtoken")
+
+const rateLimit = require("express-rate-limit") // Do not use in-memory store in production
+const toobusy = require("toobusy-js")
+const hpp = require("hpp")
+
+const contentType = require("content-type")
+const getRawBody = require("raw-body")
+const helmet = require("helmet")
+
+const replaceAll = require("string.prototype.replaceall")
+const vs = require("varstruct")
+const vi = require("varint")
+
+const cryptoRandomString = require("crypto-random-string")
+const bodyParser = require("body-parser")
+const fetch = require("node-fetch")
+
+const { getCurrentUser, userLeave, userJoin, userList } = require("./user.js")
+const filterText = require("./filter.js")
+
 const apiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 60 minutes
-  max: 1, // Limit each IP to 1 requests per `window` (here, per 60 minutes)
+  max: 100, // Limit each IP to 100 requests per `window` (here, per 60 minutes)
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
 })
-
-var cookie = require("cookie")
-const helmet = require("helmet")
 
 const privateKey = Buffer.from(process.env.PRIVATE_KEY, "base64").toString(
   "ascii"
@@ -17,7 +55,71 @@ const publicKey = Buffer.from(process.env.PUBLIC_KEY, "base64").toString(
   "ascii"
 )
 
-const replaceAll = require("string.prototype.replaceall")
+const allowedOrigins = [
+  "https://modchat-vue.mcv2.repl.co",
+  "https://modchat.micahlindley.com",
+  "https://s.modchat.micahlindley.com",
+]
+
+function credentials(req, res, next) {
+  const origin = req.headers.origin
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Credentials", true)
+  }
+  next()
+}
+
+function errorHandler(err, req, res, next) {
+  console.error(err.stack)
+  res.status(500).send(err.message)
+}
+
+async function verifyAccessToken(req, res, next) {
+  console.log(req)
+  const accessToken = req.body.access_token
+  if (!accessToken) return res.sendStatus(401)
+  console.log(accessToken)
+  const oldUser = await User.find({
+    "tokens.access_token": accessToken,
+  }).exec()
+  const user = oldUser[0]
+  if (!user) return res.sendStatus(401)
+  const foundToken = user.tokens.filter(
+    (tokenArray) => accessToken === tokenArray.access_token
+  )
+  if (!foundToken[0]) return res.sendStatus(401)
+  if (
+    foundToken[0].access_token === accessToken &&
+    Date.now() < foundToken[0].access_expiry
+  ) {
+    req.user = user
+    next()
+  } else {
+    res.sendStatus(401)
+  }
+}
+
+const corsUsage = {
+  origin: (origin, callback) => {
+    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+      callback(null, true)
+    } else {
+      callback(new Error("Not allowed by CORS"))
+    }
+  },
+  optionsSuccessStatus: 200,
+}
+
+const verifyRoles = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req?.user) return res.sendStatus(403)
+    const rolesArray = [...allowedRoles]
+    const role = req.user.role
+    if (!rolesArray.includes(role)) return res.sendStatus(401)
+    next()
+  }
+}
+
 const safeHTML = (dirty) => {
   if (dirty && dirty === "") {
     return
@@ -37,36 +139,11 @@ const safeHTML = (dirty) => {
       .join("&gt;")
     return dirty
   }
-  dirty = replaceAll(dirty, "‮", "")
-  dirty = replaceAll(dirty, "![", "")
-  dirty = replaceAll(dirty, "!(", "")
-  dirty = String(dirty)
-    .split("&")
-    .join("&amp;")
-    .split("<")
-    .join("&lt;")
-    .split(">")
-    .join("&gt;")
-  return dirty
 }
 
 function reverseString(str) {
   return str.split("").reverse().join("")
 }
-
-let b64tbl = { "-": "+", _: "/", "/": "_", "+": "-", "=": "", ".": "" }
-let decb64 = (b) => b.replace(/[-_.]/g, (m) => b64tbl[m])
-let encb64 = (b) => b.replace(/[+/=]/g, (m) => b64tbl[m])
-
-let vs = require("varstruct")
-let vi = require("varint")
-
-let minf = vs([
-  ["q", vs.Byte],
-  ["t", vs.Byte],
-  ["e", vs.VarArray(vi, vi)],
-  ["i", vs.VarArray(vi, vi)],
-])
 
 function genMuteInfo(u, t, st, ...ext) {
   let d = []
@@ -87,6 +164,19 @@ function genMuteInfo(u, t, st, ...ext) {
   return encb64(minf.encode({ t, i: d, e: extended, q: st }).toString("base64"))
 }
 
+// Automute data
+
+let b64tbl = { "-": "+", _: "/", "/": "_", "+": "-", "=": "", ".": "" }
+let decb64 = (b) => b.replace(/[-_.]/g, (m) => b64tbl[m])
+let encb64 = (b) => b.replace(/[+/=]/g, (m) => b64tbl[m])
+
+let minf = vs([
+  ["q", vs.Byte],
+  ["t", vs.Byte],
+  ["e", vs.VarArray(vi, vi)],
+  ["i", vs.VarArray(vi, vi)],
+])
+
 let slowmoRules = [
   [50, 3, 60000, 2],
   [1000, 10, 60000, 5],
@@ -98,41 +188,55 @@ let slowmoRules = [
 let sm = {}
 let slowmo = {}
 
-const cryptoRandomString = require("crypto-random-string")
-const cookieParser = require("cookie-parser")
-
-const bodyParser = require("body-parser")
-const cors = require("cors")
-
-const app = express()
-
-const fetch = require("node-fetch")
-const port = process.env.PORT || 8001
-
-app.use(bodyParser.json())
-app.use(
-  cors({
-    origin: [
-      "https://modchat-vue.mcv2.repl.co",
-      "https://modchat.micahlindley.com",
-      "https://s.modchat.micahlindley.com",
-    ],
-    credentials: true,
-    methods: ["GET", "POST"],
+try {
+  mongoose.connect(encodeURI(mongoUrl), {
+    useUnifiedTopology: true,
+    useNewUrlParser: true,
   })
-)
-app.use(helmet())
+} catch (err) {
+  console.error(err)
+}
+
+app.use(credentials)
+
+app.use(cors(corsUsage))
+
+app.use(express.urlencoded({ extended: false, limit: "1kb" }))
+
+app.use(express.json({ limit: "1kb" }))
+
 app.use(cookieParser())
 
-const mongoose = require("mongoose")
-const jwt = require("jsonwebtoken")
+//app.use(apiLimiter)
 
-mongoose.connect(encodeURI(process.env.MONGO_URL))
+app.use(hpp())
 
-// Schemas
-const User = require("./models/user.js")
-const Room = require("./models/room.js")
-const Message = require("./models/message.js")
+app.use(bodyParser.json())
+
+app.use(helmet.hsts())
+app.use(helmet.frameguard({ action: "deny" }))
+app.use(helmet.noSniff())
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      imgSrc: ["'self'"],
+      styleSrc: ["'none'"],
+    },
+  })
+)
+app.use(helmet.ieNoOpen())
+app.use(helmet.hidePoweredBy())
+
+app.use(function (req, res, next) {
+  if (toobusy()) {
+    res.send(503, 'I"m busy right now, sorry.')
+  } else {
+    next()
+  }
+})
 
 Room.find().then((r) => {
   if (JSON.stringify(r) == "[]") {
@@ -159,14 +263,11 @@ Room.find().then((r) => {
   }
 })
 
-const base64 = require("base-64")
-const socket = require("socket.io")
-const bcrypt = require("bcryptjs")
-
-var server = app.listen(
-  port,
-  console.log(`🟢 Server is running on port ${port}.`)
+const server = app.listen(
+  PORT,
+  console.log(`🟢 Server is running on port ${PORT}.`)
 )
+
 const io = socket(server, {
   pingTimeout: 60000, // tries to fix too many reconnects
   cors: {
@@ -176,9 +277,9 @@ const io = socket(server, {
   },
 })
 
-const { getCurrentUser, userLeave, userJoin, userList } = require("./user.js")
-const filterText = require("./filter.js")
-
+/*const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
+io.use(wrap(verifyAccessToken))
+*/
 app.get("/", (req, res) => {
   res.send(`🏁 modchat-server ${VERSION} is running`)
 })
@@ -310,35 +411,16 @@ app.get("/api/session/isMod/:username", (req, res) => {
   }
 })
 
-app.post("/api/messages/report", async (req, res) => {
+app.post("/api/messages/report", verifyAccessToken, async (req, res) => {
   const room = req.body.room
   const id = req.body.id
   const username = req.body.username
-  const access_token = req.body.access_token
   const type = req.body.type
-  if (
-    (username && room && id && type == true) ||
-    (type == false && access_token)
-  ) {
-    if (
-      String(room) &&
-      Number(id) &&
-      String(access_token) &&
-      String(username)
-    ) {
-      const user = await User.findOne({
-        username: username,
-      })
+  if ((username && room && id && type == true) || type == false) {
+    if (String(room) && Number(id) && String(username)) {
+      const user = req.user
       if (user) {
-        const tokenArray = user.tokens
-        const token = tokenArray.filter(
-          (tokenArray) => tokenArray.access_token === access_token
-        )
-        if (
-          token[0] &&
-          Date.now() < token[0].access_expiry &&
-          user.banned !== true
-        ) {
+        if (user.banned !== true) {
           await Message.update(
             {
               room: room,
@@ -363,39 +445,24 @@ app.post("/api/messages/report", async (req, res) => {
   }
 })
 
-app.post("/api/messages/delete/", async (req, res) => {
-  const room = req.body.room
-  const id = req.body.id
-  const username = req.body.username
-  const access_token = req.body.access_token
-  if (username && room && id && access_token) {
-    if (
-      String(room) &&
-      Number(id) &&
-      String(access_token) &&
-      String(username)
-    ) {
-      const user = await User.findOne({
-        username: username,
-      })
-      if (user) {
-        const tokenArray = user.tokens
-        const token = tokenArray.filter(
-          (tokenArray) => tokenArray.access_token === access_token
-        )
-        if (
-          token[0] &&
-          Date.now() < token[0].access_expiry &&
-          user.banned !== true
-        ) {
-          if (user.role == "moderator") {
+app.post(
+  "/api/messages/delete/",
+  verifyAccessToken,
+  verifyRoles("moderator"),
+  async (req, res) => {
+    const room = req.body.room
+    const id = req.body.id
+    const username = req.body.username
+    if (username && room && id) {
+      if (String(room) && Number(id) && String(username)) {
+        const user = req.user
+        if (user) {
+          if (user.banned !== true) {
             await Message.deleteOne({
               room: room,
               id: id,
             })
             res.sendStatus(200)
-          } else {
-            res.sendStatus(401)
           }
         } else {
           res.sendStatus(401)
@@ -406,45 +473,26 @@ app.post("/api/messages/delete/", async (req, res) => {
     } else {
       res.sendStatus(400)
     }
-  } else {
-    res.sendStatus(400)
   }
-})
+)
 
-app.post("/api/session/revoke", async (req, res) => {
-  const username = req.body.username
-  const mod = req.body.myUsername
-  const access_token = req.body.access_token
-  if (
-    username &&
-    access_token &&
-    mod &&
-    String(username) &&
-    String(access_token) &&
-    String(mod)
-  ) {
-    const user = await User.findOne({
-      username: mod,
-    })
-    const revokeUser = await User.findOne({
-      username: username,
-    })
-    if (revokeUser && user) {
-      const tokenArray = user.tokens
-      const token = tokenArray.filter(
-        (tokenArray) => tokenArray.access_token === access_token
-      )
-      if (
-        token[0] &&
-        Date.now() < token[0].access_expiry &&
-        user.banned !== true
-      ) {
-        if (user.role == "moderator") {
+app.post(
+  "/api/session/revoke",
+  verifyAccessToken,
+  verifyRoles("moderator"),
+  async (req, res) => {
+    const username = req.body.username
+    const mod = req.body.myUsername
+    if (username && mod && String(username) && String(mod)) {
+      const user = req.user
+      const revokeUser = await User.findOne({
+        username: username,
+      })
+      if (revokeUser && user) {
+        if (user.banned !== true) {
           revokeUser.tokens = []
           revokeUser.save()
           res.sendStatus(200)
-        } else {
-          res.sendStatus(401)
         }
       } else {
         res.sendStatus(401)
@@ -452,43 +500,31 @@ app.post("/api/session/revoke", async (req, res) => {
     } else {
       res.sendStatus(400)
     }
-  } else {
-    res.sendStatus(400)
   }
-})
+)
 
-app.post("/api/session/ban", async (req, res) => {
-  const username = req.body.username
-  const mod = req.body.myUsername
-  const access_token = req.body.access_token
-  const reason = req.body.reason
-  const timestamp = req.body.time
-  if (
-    username &&
-    access_token &&
-    reason &&
-    timestamp &&
-    mod &&
-    String(username) &&
-    String(access_token) &&
-    String(reason) &&
-    Number(timestamp) &&
-    String(mod)
-  ) {
-    const user = await User.findOne({
-      username: mod,
-    })
-    if (user) {
-      const tokenArray = user.tokens
-      const token = tokenArray.filter(
-        (tokenArray) => tokenArray.access_token === access_token
-      )
-      if (
-        token[0] &&
-        Date.now() < token[0].access_expiry &&
-        user.banned !== true
-      ) {
-        if (user.role == "moderator") {
+app.post(
+  "/api/session/ban",
+  verifyAccessToken,
+  verifyRoles("moderator"),
+  async (req, res) => {
+    const username = req.body.username
+    const mod = req.body.myUsername
+    const reason = req.body.reason
+    const timestamp = req.body.time
+    if (
+      username &&
+      reason &&
+      timestamp &&
+      mod &&
+      String(username) &&
+      String(reason) &&
+      Number(timestamp) &&
+      String(mod)
+    ) {
+      const user = req.user
+      if (user) {
+        if (user.banned !== true) {
           await User.updateOne(
             {
               username,
@@ -506,42 +542,25 @@ app.post("/api/session/ban", async (req, res) => {
           res.sendStatus(401)
         }
       } else {
-        res.sendStatus(401)
+        res.sendStatus(400)
       }
     } else {
       res.sendStatus(400)
     }
-  } else {
-    res.sendStatus(400)
   }
-})
+)
 
-app.post("/api/session/unban", async (req, res) => {
-  const username = req.body.username
-  const access_token = req.body.access_token
-  const mod = req.body.myUsername
-  if (
-    username &&
-    access_token &&
-    mod &&
-    String(username) &&
-    String(access_token) &&
-    String(mod)
-  ) {
-    const user = await User.findOne({
-      username: mod,
-    })
-    if (user) {
-      const tokenArray = user.tokens
-      const token = tokenArray.filter(
-        (tokenArray) => tokenArray.access_token === access_token
-      )
-      if (
-        token[0] &&
-        Date.now() < token[0].access_expiry &&
-        user.banned !== true
-      ) {
-        if (user.role == "moderator") {
+app.post(
+  "/api/session/unban",
+  verifyAccessToken,
+  verifyRoles("moderator"),
+  async (req, res) => {
+    const username = req.body.username
+    const mod = req.body.myUsername
+    if (username && mod && String(username) && String(mod)) {
+      const user = req.user
+      if (user) {
+        if (user.banned !== true) {
           await User.updateOne(
             {
               username,
@@ -557,45 +576,33 @@ app.post("/api/session/unban", async (req, res) => {
           res.sendStatus(401)
         }
       } else {
-        res.sendStatus(401)
+        res.sendStatus(400)
       }
     } else {
       res.sendStatus(400)
     }
-  } else {
-    res.sendStatus(400)
   }
-})
+)
 
-app.post("/api/session/mute", async (req, res) => {
-  const username = req.body.username
-  const access_token = req.body.access_token
-  const mod = req.body.myUsername
-  const time = req.body.timeStamp
-  if (
-    username &&
-    access_token &&
-    mod &&
-    time &&
-    String(username) &&
-    String(access_token) &&
-    String(mod) &&
-    Number(time)
-  ) {
-    const user = await User.findOne({
-      username: mod,
-    })
-    if (user) {
-      const tokenArray = user.tokens
-      const token = tokenArray.filter(
-        (tokenArray) => tokenArray.access_token === access_token
-      )
-      if (
-        token[0] &&
-        Date.now() < token[0].access_expiry &&
-        user.banned !== true
-      ) {
-        if (user.role == "moderator") {
+app.post(
+  "/api/session/mute",
+  verifyAccessToken,
+  verifyRoles("moderator"),
+  async (req, res) => {
+    const username = req.body.username
+    const mod = req.body.myUsername
+    const time = req.body.timeStamp
+    if (
+      username &&
+      mod &&
+      time &&
+      String(username) &&
+      String(mod) &&
+      Number(time)
+    ) {
+      const user = req.user
+      if (user) {
+        if (user.banned !== true) {
           await User.updateOne(
             {
               username,
@@ -607,8 +614,6 @@ app.post("/api/session/mute", async (req, res) => {
             }
           )
           res.sendStatus(200)
-        } else {
-          res.sendStatus(401)
         }
       } else {
         res.sendStatus(401)
@@ -616,10 +621,8 @@ app.post("/api/session/mute", async (req, res) => {
     } else {
       res.sendStatus(400)
     }
-  } else {
-    res.sendStatus(400)
   }
-})
+)
 
 app.post("/api/soa2code", (req, res) => {
   if (req.body.code && req.body.state) {
@@ -652,17 +655,19 @@ app.post("/api/soa2code", (req, res) => {
               if (newResJson && newResJson.user_id) {
                 newResJson.session = cryptoRandomString(46)
                 console.log("💾 Adding user to mongoose")
-                User.findOne({ username: newResJson.user_name }).then((user) => {
-                  if (user) {
-                    console.log("User already exists")
-                  } else {
+                User.findOne({ username: newResJson.user_name }).then(
+                  (user) => {
+                    if (user) {
+                      console.log("User already exists")
+                    } else {
                       User.create({
-                      username: newResJson.user_name,
-                      role: "user",
-                    })
+                        username: newResJson.user_name,
+                        role: "user",
+                      })
+                    }
+                    res.json(newResJson)
                   }
-                  res.json(newResJson)
-                })
+                )
               }
             })
         }
@@ -788,6 +793,7 @@ app.post("/api/refresh", async (req, res) => {
   if (req.cookies["refresh_token"] && req.body.username) {
     const user = await User.findOne({ username: req.body.username })
     if (user && user.banned !== true) {
+      let jwtRefresh
       jwt.verify(
         req.cookies["refresh_token"],
         publicKey,
@@ -1012,6 +1018,7 @@ io.on("connection", (socket) => {
 
           app.post("/api/logout", async (req, res) => {
             if (req.body.username && req.cookies["refresh_token"]) {
+              let jwtRefresh
               jwt.verify(
                 req.cookies["refresh_token"],
                 publicKey,
@@ -1264,4 +1271,14 @@ io.on("connection", (socket) => {
       })
     }
   )
+})
+
+app.use(errorHandler)
+
+process.on("uncaughtException", function (err) {
+  console.log("Caught unhandled exception " + err)
+})
+
+process.on("unhandledRejection", function (err) {
+  console.log("Caught unhandled rejection: " + err)
 })
