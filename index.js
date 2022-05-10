@@ -59,6 +59,7 @@ const allowedOrigins = [
   "https://modchat-vue.mcv2.repl.co",
   "https://modchat.micahlindley.com",
   "https://s.modchat.micahlindley.com",
+  "https://panel.modchat.micahlindley.com/"
 ]
 
 function credentials(req, res, next) {
@@ -414,10 +415,9 @@ app.get("/api/session/isMod/:username", (req, res) => {
 app.post("/api/messages/report", verifyAccessToken, async (req, res) => {
   const room = req.body.room
   const id = req.body.id
-  const username = req.body.username
   const type = req.body.type
-  if ((username && room && id && type == true) || type == false) {
-    if (String(room) && Number(id) && String(username)) {
+  if ((room && id && type == true) || type == false) {
+    if (String(room) && Number(id)) {
       const user = req.user
       if (user) {
         if (user.banned !== true) {
@@ -452,9 +452,8 @@ app.post(
   async (req, res) => {
     const room = req.body.room
     const id = req.body.id
-    const username = req.body.username
     if (username && room && id) {
-      if (String(room) && Number(id) && String(username)) {
+      if (String(room) && Number(id)) {
         const user = req.user
         if (user) {
           if (user.banned !== true) {
@@ -482,8 +481,7 @@ app.post(
   verifyRoles("moderator"),
   async (req, res) => {
     const username = req.body.username
-    const mod = req.body.myUsername
-    if (username && mod && String(username) && String(mod)) {
+    if (username && String(username)) {
       const user = req.user
       const revokeUser = await User.findOne({
         username: username,
@@ -509,18 +507,15 @@ app.post(
   verifyRoles("moderator"),
   async (req, res) => {
     const username = req.body.username
-    const mod = req.body.myUsername
     const reason = req.body.reason
     const timestamp = req.body.time
     if (
       username &&
       reason &&
       timestamp &&
-      mod &&
       String(username) &&
       String(reason) &&
-      Number(timestamp) &&
-      String(mod)
+      Number(timestamp)
     ) {
       const user = req.user
       if (user) {
@@ -556,8 +551,7 @@ app.post(
   verifyRoles("moderator"),
   async (req, res) => {
     const username = req.body.username
-    const mod = req.body.myUsername
-    if (username && mod && String(username) && String(mod)) {
+    if (username && String(username)) {
       const user = req.user
       if (user) {
         if (user.banned !== true) {
@@ -590,14 +584,11 @@ app.post(
   verifyRoles("moderator"),
   async (req, res) => {
     const username = req.body.username
-    const mod = req.body.myUsername
     const time = req.body.timeStamp
     if (
       username &&
-      mod &&
       time &&
       String(username) &&
-      String(mod) &&
       Number(time)
     ) {
       const user = req.user
