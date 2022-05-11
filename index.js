@@ -60,7 +60,7 @@ const allowedOrigins = [
   "https://modchat.micahlindley.com",
   "https://s.modchat.micahlindley.com",
   "https://panel.modchat.micahlindley.com",
-  "https://s.panel.modchat.micahlindley.com",
+  "https://s.panel.modchat.micahlindley.com/",
 ]
 
 function credentials(req, res, next) {
