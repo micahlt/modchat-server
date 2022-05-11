@@ -60,7 +60,7 @@ const allowedOrigins = [
   "https://modchat.micahlindley.com",
   "https://s.modchat.micahlindley.com",
   "https://panel.modchat.micahlindley.com",
-  "https://s.panel.modchat.micahlindley.com/",
+  "https://s.panel.modchat.micahlindley.com",
 ]
 
 function credentials(req, res, next) {
@@ -345,7 +345,8 @@ app.post(
 )
 
 app.get("/api/bannedMuted", (req, res) => {
-  User.find({$or:[{banned: true},{mutedFor: {$gte: Date.now()}}]
+  User.find({
+    $or: [{ banned: true }, { mutedFor: { $gte: Date.now() } }],
   }).then((msg) => {
     res.send(msg)
   })
