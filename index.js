@@ -60,6 +60,7 @@ const allowedOrigins = [
   "https://modchat.micahlindley.com",
   "https://s.modchat.micahlindley.com",
   "https://panel.modchat.micahlindley.com",
+  "https://s.panel.modchat.micahlindley.com",
 ]
 
 function credentials(req, res, next) {
@@ -343,17 +344,8 @@ app.post(
   }
 )
 
-app.get("/api/banned", (req, res) => {
-  User.find({
-    ban_expiry: { $gte: Date.now() },
-  }).then((msg) => {
-    res.send(msg)
-  })
-})
-
-app.get("/api/muted", (req, res) => {
-  User.find({
-    mutedFor: { $gte: Date.now() },
+app.get("/api/bannedMuted", (req, res) => {
+  User.find({$or:[{banned: true},{mutedFor: {$gte: Date.now()}}]
   }).then((msg) => {
     res.send(msg)
   })
@@ -591,8 +583,8 @@ app.post(
   verifyRoles("moderator"),
   async (req, res) => {
     const username = req.body.username
-    const time = req.body.timeStamp
-    if (username && time && String(username) && Number(time)) {
+    const timestamp = req.body.timeStamp
+    if (username && timestamp && String(username) && Number(timestamp)) {
       const user = req.user
       if (user) {
         if (user.banned !== true) {
@@ -602,7 +594,7 @@ app.post(
             },
             {
               $set: {
-                mutedFor: new Date(Date.now() + time),
+                mutedFor: new Date(Date.now() + timestamp),
               },
             }
           )
