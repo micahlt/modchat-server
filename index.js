@@ -261,6 +261,10 @@ Room.find().then((r) => {
       name: "help",
       current_message_id: 0,
     })
+    Room.create({
+      name: "roleplay",
+      current_message_id: 0,
+    })
   }
 })
 
