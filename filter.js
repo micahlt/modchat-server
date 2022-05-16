@@ -15,6 +15,12 @@ let addWords = [
 ]
 addWords.push.apply(addWords, frenchBadwords.array) // Add French curse words to the filter
 addWords.push.apply(addWords, moreBadwords) // Add other curse words to the filter
+let removeWords = ["god", "youd", "you'd"]
+
+addWords = addWords.filter(function(word) {
+  return removeWords.indexOf(word) < 0 ? word : null;
+});
+
 const filter = new Filter({
   list: addWords,
 })
