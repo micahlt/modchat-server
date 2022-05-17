@@ -11,7 +11,7 @@ let addWords = [
   "slack",
   "snapchat",
   "siack",
-  "lnstagram",
+  "lnstagram"
 ]
 addWords.push.apply(addWords, frenchBadwords.array) // Add French curse words to the filter
 addWords.push.apply(addWords, moreBadwords) // Add other curse words to the filter

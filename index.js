@@ -125,12 +125,11 @@ const safeHTML = (dirty) => {
   if (dirty && dirty === "") {
     return
   } else {
-    if (dirty.includes("‮")) {
-      reverseString(dirty)
-    }
+    dirty = replaceAll(dirty, ":middle_finger:", "")
+    dirty = replaceAll(dirty, ":fu:", "")
     dirty = replaceAll(dirty, "‮", "")
-    dirty = replaceAll(dirty, "![", "")
     dirty = replaceAll(dirty, "!(", "")
+    dirty = replaceAll(dirty, "![", "")
     dirty = String(dirty)
       .split("&")
       .join("&amp;")
@@ -140,10 +139,6 @@ const safeHTML = (dirty) => {
       .join("&gt;")
     return dirty
   }
-}
-
-function reverseString(str) {
-  return str.split("").reverse().join("")
 }
 
 function genMuteInfo(u, t, st, ...ext) {
