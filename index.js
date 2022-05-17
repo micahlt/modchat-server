@@ -125,8 +125,6 @@ const safeHTML = (dirty) => {
   if (dirty && dirty === "") {
     return
   } else {
-    dirty = replaceAll(dirty, ":middle_finger:", "")
-    dirty = replaceAll(dirty, ":fu:", "")
     dirty = replaceAll(dirty, "‮", "")
     dirty = replaceAll(dirty, "!(", "")
     dirty = replaceAll(dirty, "![", "")
