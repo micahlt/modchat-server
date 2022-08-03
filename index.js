@@ -1184,7 +1184,7 @@ io.on("connection", (socket) => {
                               profilePicture:
                                 "https://cdn.micahlindley.com/assets/modchat-pfp.png",
                               type: "text",
-                              content: `**${user.username}** shrugged ¯\_(ツ)_/¯`,
+                              content: `**${user.username}** shrugged ¯\\\_(ツ)_/¯`,
                               id: cryptoRandomString(34),
                             })
                             break
