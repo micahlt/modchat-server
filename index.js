@@ -642,6 +642,7 @@ app.post("/api/soa2code", (req, res) => {
                   (user) => {
                     if (user) {
                       console.log("User already exists")
+                      return;
                     } else {
                       User.create({
                         username: newResJson.user_name,
