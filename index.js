@@ -660,6 +660,8 @@ app.post("/api/soa2code", (req, res) => {
 })
 
 app.post("/api/updatepassword", async (req, res) => {
+  res.status(400).send({ reason: "disabledforsecurity" });
+  return;
   if (req.body.username && req.body.password) {
     const newPwd = await bcrypt.hash(req.body.password, 10)
     const username = req.body.username
