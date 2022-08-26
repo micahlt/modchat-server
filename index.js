@@ -642,7 +642,7 @@ app.post("/api/soa2code", (req, res) => {
                   (user) => {
                     if (user) {
                       console.log("User already exists")
-                      return;
+                      return
                     } else {
                       User.create({
                         username: newResJson.user_name,
@@ -663,6 +663,7 @@ app.post("/api/updatepassword", async (req, res) => {
   if (req.body.username && req.body.password) {
     const newPwd = await bcrypt.hash(req.body.password, 10)
     const username = req.body.username
+    if(user) return 400
     await User.updateOne(
       {
         username,
