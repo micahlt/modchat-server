@@ -55,6 +55,7 @@ const publicKey = Buffer.from(process.env.PUBLIC_KEY, "base64").toString(
   "ascii"
 )
 
+// do we want to do something so people can make custom clients?
 const allowedOrigins = [
   "https://modchat-vue.mcv2.repl.co",
   "https://modchat.micahlindley.com",
@@ -62,6 +63,30 @@ const allowedOrigins = [
   "https://panel.modchat.micahlindley.com",
   "https://s.panel.modchat.micahlindley.com",
 ]
+
+// Automute data
+
+let b64tbl = { "-": "+", _: "/", "/": "_", "+": "-", "=": "", ".": "" }
+let decb64 = (b) => b.replace(/[-_.]/g, (m) => b64tbl[m])
+let encb64 = (b) => b.replace(/[+/=]/g, (m) => b64tbl[m])
+
+let minf = vs([
+  ["q", vs.Byte],
+  ["t", vs.Byte],
+  ["e", vs.VarArray(vi, vi)],
+  ["i", vs.VarArray(vi, vi)],
+])
+
+let slowmoRules = [
+  [50, 3, 60000, 2],
+  [1000, 10, 60000, 5],
+  [5000, 40, 30000, 20],
+  [30000, 50, 40000, 40],
+  [5000, 8, 30000, 6],
+  [1000, 4, 30000, 3],
+]
+let sm = {}
+let slowmo = {}
 
 function credentials(req, res, next) {
   const origin = req.headers.origin
@@ -158,30 +183,6 @@ function genMuteInfo(u, t, st, ...ext) {
   return encb64(minf.encode({ t, i: d, e: extended, q: st }).toString("base64"))
 }
 
-// Automute data
-
-let b64tbl = { "-": "+", _: "/", "/": "_", "+": "-", "=": "", ".": "" }
-let decb64 = (b) => b.replace(/[-_.]/g, (m) => b64tbl[m])
-let encb64 = (b) => b.replace(/[+/=]/g, (m) => b64tbl[m])
-
-let minf = vs([
-  ["q", vs.Byte],
-  ["t", vs.Byte],
-  ["e", vs.VarArray(vi, vi)],
-  ["i", vs.VarArray(vi, vi)],
-])
-
-let slowmoRules = [
-  [50, 3, 60000, 2],
-  [1000, 10, 60000, 5],
-  [5000, 40, 30000, 20],
-  [30000, 50, 40000, 40],
-  [5000, 8, 30000, 6],
-  [1000, 4, 30000, 3],
-]
-let sm = {}
-let slowmo = {}
-
 try {
   mongoose.connect(encodeURI(mongoUrl), {
     useUnifiedTopology: true,
@@ -226,7 +227,7 @@ app.use(helmet.hidePoweredBy())
 
 app.use(function (req, res, next) {
   if (toobusy()) {
-    res.send(503, 'I"m busy right now, sorry.')
+    res.send(503, 'Modchat is very busy right now, sorry.')
   } else {
     next()
   }
@@ -275,9 +276,6 @@ const io = socket(server, {
   },
 })
 
-/*const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
-io.use(wrap(verifyAccessToken))
-*/
 app.get("/", (req, res) => {
   res.send(`🏁 modchat-server ${VERSION} is running`)
 })
@@ -1139,7 +1137,7 @@ io.on("connection", (socket) => {
                       type: "text",
                       content: `You are muted for ${
                         trig / 1000
-                      } seconds. This is because of spamming, this is a cooldown.`,
+                      } seconds. This is because of spamming and you are on a cooldown.`,
                       time: new Date(),
                       id: cryptoRandomString(34),
                     })
@@ -1153,7 +1151,7 @@ io.on("connection", (socket) => {
                       profilePicture:
                         "https://cdn.micahlindley.com/assets/modchat-pfp.png",
                       type: "text",
-                      content: `Please stop sending messages as fast as you are! Slow down please.`,
+                      content: `Please slow down with your messages.`,
                       time: new Date(),
                       id: cryptoRandomString(34),
                     })
@@ -1165,17 +1163,8 @@ io.on("connection", (socket) => {
                     const id = oldID.current_message_id + 1
                     const content = safeHTML(object.content)
 
-                    // moderate message with external server
                     const res = filterText(object.content) ? 400 : 200
-                    /*await fetch(
-                    "https://mc-filterbot.micahlt.repl.co/api/checkstring",
-                    {
-                      method: "POST",
-                      body: content,
-                    }
-                  ).catch((err) => {
-                    console.error("⚠️ " + err);
-                  })*/
+
                     if (res) {
                       if (res == 200) {
                         switch (content.split(" ")[0]) {
