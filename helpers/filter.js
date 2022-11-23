@@ -11,7 +11,7 @@ let addWords = [
   "slack",
   "snapchat",
   "siack",
-  "lnstagram"
+  "lnstagram",
 ]
 addWords.push.apply(addWords, frenchBadwords.array) // Add French curse words to the filter
 addWords.push.apply(addWords, moreBadwords) // Add other curse words to the filter
@@ -21,7 +21,17 @@ addWords = addWords.filter(function (word) {
   return removeWords.indexOf(word) < 0 ? word : null
 })
 
-const emojiBlacklist = ["🍆", "🖕", "🍑", "🍌", ":middle_finger:", ":fu:", ":peach:", ":eggplant:", ":banana:"]
+const emojiBlacklist = [
+  "🍆",
+  "🖕",
+  "🍑",
+  "🍌",
+  ":middle_finger:",
+  ":fu:",
+  ":peach:",
+  ":eggplant:",
+  ":banana:",
+]
 
 const filter = new Filter({
   list: addWords,
