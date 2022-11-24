@@ -180,6 +180,8 @@ app.use(helmet.hidePoweredBy())
 app.use(tooBusy)
 app.use(apiLimiter)
 
+const socket = require("socket.io")
+
 Room.find().then((r) => {
   if (JSON.stringify(r) == "[]") {
     Room.create({
@@ -213,6 +215,15 @@ const server = app.listen(
   PORT,
   console.log(`🟢 Server is running on port ${PORT}.`)
 )
+
+const io = socket(server, {
+  pingTimeout: 60000, // tries to fix too many reconnects
+  cors: {
+    methods: ["GET", "POST"],
+    origin: true,
+    credentials: true,
+  },
+})
 
 app.use(require("./api/rooms/messages.js"))
 app.use(require("./api/rooms/rooms.js"))
