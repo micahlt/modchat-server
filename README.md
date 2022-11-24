@@ -13,22 +13,6 @@ Modchat is a moderated chat webapp designed for creators on [Scratch](https://sc
 
 This repository holds the backend code, which is a Node server utilizing Socket.io and Express. The frontend (which you'll probably want for developing this) can be found at [micahlt/modchat-vue](https://github.com/micahlt/modchat-vue). The project follows the [all-contributors specification](https://allcontributors.org/docs/en/specification).
 
-## Project setup
-
-### Install dependencies
-
-```bash
-$ npm install
-```
-
-### Host server
-
-```bash
-$ npm start
-```
-
-</div>
-
 ## Development
 
 ### Check for code formatting

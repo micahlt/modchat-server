@@ -310,7 +310,7 @@ io.on("connection", (socket) => {
   //when a user joins room
   socket.on(
     "joinRoom",
-    async ({ username, roomname, access_token, sameTab }) => {
+    async ({ username, roomname, access_token }) => {
       authUser(username, access_token).then(async (authed) => {
         if (authed.state && authed.state == true) {
           // create user

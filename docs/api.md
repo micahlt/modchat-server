@@ -1,0 +1,1 @@
+(Replaced by the [Wiki](https://github.com/micahlt/modchat-server/wiki/API-Reference))
